@@ -1,0 +1,568 @@
+.dashboardShell {
+  --bg-base: #f4f7fb;
+  --bg-surface: #ffffff;
+  --bg-surface-subtle: #fcfdff;
+  --text-primary: #0b1220;
+  --text-muted: #5f6b7a;
+  --line-soft: #dce4ef;
+  --brand: #1a8f6f;
+  --brand-strong: #106a53;
+  --alert: #b0372d;
+  --shadow-soft: 0 18px 36px -26px rgba(10, 22, 43, 0.55);
+  --sidebar-border: rgba(167, 186, 220, 0.2);
+  --sidebar-button-border: rgba(150, 177, 221, 0.35);
+  --sidebar-button-bg: rgba(222, 237, 255, 0.08);
+  --sidebar-nav-hover: rgba(210, 225, 247, 0.15);
+  --sidebar-nav-active: rgba(45, 217, 164, 0.18);
+  --topbar-bg: rgba(244, 247, 251, 0.84);
+  --card-fallback-bg: #ffffff;
+  position: relative;
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1fr;
+  color: var(--text-primary);
+  background:
+    radial-gradient(circle at 20% 0%, #e8f8f2 0, transparent 32%),
+    radial-gradient(circle at 90% 18%, #e9f2ff 0, transparent 35%),
+    var(--bg-base);
+}
+
+.dashboardShell[data-theme="dark"] {
+  --bg-base: #0a1324;
+  --bg-surface: #111d33;
+  --bg-surface-subtle: #14213a;
+  --text-primary: #e7eefc;
+  --text-muted: #9bb0cf;
+  --line-soft: #223556;
+  --brand: #23b189;
+  --brand-strong: #178464;
+  --alert: #f37e72;
+  --shadow-soft: 0 20px 44px -30px rgba(0, 0, 0, 0.8);
+  --sidebar-border: rgba(98, 123, 172, 0.34);
+  --sidebar-button-border: rgba(120, 150, 210, 0.5);
+  --sidebar-button-bg: rgba(28, 46, 82, 0.42);
+  --sidebar-nav-hover: rgba(98, 127, 184, 0.2);
+  --sidebar-nav-active: rgba(46, 205, 157, 0.26);
+  --topbar-bg: rgba(10, 19, 36, 0.84);
+  --card-fallback-bg: #0f1b32;
+  background:
+    radial-gradient(circle at 20% -8%, rgba(19, 76, 112, 0.3) 0, transparent 34%),
+    radial-gradient(circle at 88% 18%, rgba(24, 97, 74, 0.34) 0, transparent 36%),
+    var(--bg-base);
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 10, 18, 0.42);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 200ms ease;
+  z-index: 20;
+}
+
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: min(84vw, 300px);
+  height: 100vh;
+  background: linear-gradient(170deg, #0f172a 0%, #162138 40%, #213259 100%);
+  color: var(--text-on-dark);
+  border-right: 1px solid var(--sidebar-border);
+  transform: translateX(-106%);
+  transition:
+    transform 260ms ease,
+    width 200ms ease;
+  z-index: 24;
+  padding: 18px 14px;
+  box-shadow: var(--shadow-soft);
+}
+
+.sidebar[data-open="true"] {
+  transform: translateX(0);
+}
+
+.sidebar[data-open="true"] ~ .backdrop,
+.backdrop[aria-hidden="false"] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.sidebarHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.brandBlock {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brandBlock strong {
+  font-family: var(--font-space-grotesk), "Segoe UI", sans-serif;
+  font-size: 1rem;
+}
+
+.brandBlock small {
+  color: #a4b5d4;
+  font-size: 0.75rem;
+}
+
+.brandDot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #6ef4cf 0%, #1a8f6f 100%);
+  box-shadow: 0 0 16px rgba(110, 244, 207, 0.8);
+}
+
+.iconButton {
+  border: 1px solid var(--sidebar-button-border);
+  background: var(--sidebar-button-bg);
+  color: inherit;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.navMenu {
+  display: grid;
+  gap: 8px;
+}
+
+.navMenu button {
+  text-align: left;
+  font-size: 0.95rem;
+  border: 0;
+  border-radius: 12px;
+  padding: 12px;
+  color: #d7e6ff;
+  background: transparent;
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+
+.navMenu button:hover {
+  background: var(--sidebar-nav-hover);
+}
+
+.navMenu button[data-active="true"] {
+  background: var(--sidebar-nav-active);
+  color: #f0fff9;
+  font-weight: 600;
+}
+
+.pageColumn {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--topbar-bg);
+  backdrop-filter: blur(10px);
+}
+
+.topbarLeft {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.topbarLeft p {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
+.topbarLeft strong {
+  font-family: var(--font-space-grotesk), "Segoe UI", sans-serif;
+  font-size: 1rem;
+}
+
+.topbarActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.userBadge {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-surface) 82%, #eef5ff 18%);
+}
+
+.userBadge strong {
+  font-size: 0.9rem;
+}
+
+.userBadge span {
+  color: var(--text-muted);
+  font-size: 0.74rem;
+}
+
+.themeSwitch {
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  padding: 9px 12px;
+  background: var(--card-fallback-bg);
+  color: var(--text-primary);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primaryAction {
+  border: 0;
+  border-radius: 12px;
+  padding: 10px 12px;
+  color: #fff;
+  font-weight: 600;
+  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-strong) 100%);
+  cursor: pointer;
+}
+
+.secondaryAction {
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: transparent;
+  color: var(--text-primary);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.secondaryAction:disabled,
+.themeSwitch:disabled,
+.primaryAction:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.mainContent {
+  padding: 14px;
+  display: grid;
+  gap: 14px;
+  animation: riseIn 360ms ease;
+}
+
+.metricsGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+}
+
+.metricCard {
+  padding: 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line-soft);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.metricCard p {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+
+.metricCard strong {
+  font-family: var(--font-space-grotesk), "Segoe UI", sans-serif;
+  font-size: 1.6rem;
+}
+
+.contentGrid {
+  display: grid;
+  gap: 14px;
+}
+
+.panel {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line-soft);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-soft);
+  padding: 14px;
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.panelHeader h2 {
+  font-size: 1rem;
+  font-family: var(--font-space-grotesk), "Segoe UI", sans-serif;
+}
+
+.panelHeader span {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.complaintsList {
+  display: grid;
+  gap: 10px;
+  max-height: 62vh;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.complaintCard {
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  background: var(--bg-surface-subtle);
+  animation: fadeSlide 300ms ease;
+}
+
+.complaintTopRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.trackingCode {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+
+.statusPill {
+  border-radius: 999px;
+  padding: 5px 9px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+
+.statusPill[data-status="pendiente"] {
+  background: #fff3d1;
+  color: #6f4d0f;
+  border-color: #f4d089;
+}
+
+.statusPill[data-status="en-proceso"] {
+  background: #dff1ff;
+  color: #12476a;
+  border-color: #9ccff5;
+}
+
+.statusPill[data-status="resuelto"] {
+  background: #dcf8ef;
+  color: #145742;
+  border-color: #8edecc;
+}
+
+.complaintCard h3 {
+  font-size: 0.98rem;
+}
+
+.complaintCard p {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+
+.complaintMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.actionsRow {
+  display: flex;
+  gap: 8px;
+}
+
+.actionsRow button,
+.cancelInlineButton {
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: var(--card-fallback-bg);
+  padding: 8px 10px;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--text-primary);
+}
+
+.dangerButton {
+  color: var(--alert);
+}
+
+.form {
+  display: grid;
+  gap: 10px;
+}
+
+.form label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.86rem;
+  color: var(--text-muted);
+}
+
+.form input,
+.form select {
+  width: 100%;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  padding: 10px 11px;
+  color: var(--text-primary);
+  background: var(--card-fallback-bg);
+}
+
+.form input:focus,
+.form select:focus {
+  outline: 2px solid color-mix(in srgb, var(--brand) 38%, #fff 62%);
+  border-color: var(--brand);
+}
+
+.submitButton {
+  margin-top: 2px;
+  border: 0;
+  border-radius: 12px;
+  padding: 12px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-strong) 100%);
+  cursor: pointer;
+}
+
+.placeholderCard {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line-soft);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-soft);
+  padding: 20px;
+  display: grid;
+  gap: 10px;
+}
+
+.placeholderCard h2 {
+  font-family: var(--font-space-grotesk), "Segoe UI", sans-serif;
+}
+
+.placeholderCard p {
+  color: var(--text-muted);
+  max-width: 52ch;
+}
+
+.footer {
+  border-top: 1px solid var(--line-soft);
+  padding: 12px 14px;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+@media (min-width: 700px) {
+  .metricsGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .contentGrid {
+    grid-template-columns: 1.3fr 1fr;
+  }
+}
+
+@media (min-width: 1024px) {
+  .dashboardShell {
+    grid-template-columns: auto 1fr;
+  }
+
+  .backdrop {
+    display: none;
+  }
+
+  .sidebar {
+    position: sticky;
+    top: 0;
+    transform: translateX(0);
+    width: 280px;
+  }
+
+  .sidebar[data-collapsed="true"] {
+    width: 92px;
+  }
+
+  .sidebar[data-collapsed="true"] .brandBlock div,
+  .sidebar[data-collapsed="true"] .navMenu button {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: clip;
+  }
+
+  .topbar {
+    padding: 16px 20px;
+  }
+
+  .topbarActions {
+    gap: 10px;
+  }
+
+  .mainContent {
+    padding: 20px;
+    gap: 18px;
+  }
+
+  .panel {
+    padding: 16px;
+  }
+
+  .topbarLeft .iconButton {
+    display: none;
+  }
+
+  .footer {
+    padding: 14px 20px;
+  }
+}
+
+@keyframes riseIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeSlide {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

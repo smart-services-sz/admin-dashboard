@@ -1,0 +1,237 @@
+.loginShell {
+  position: relative;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  overflow: hidden;
+}
+
+.glowA,
+.glowB {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(32px);
+  pointer-events: none;
+}
+
+.glowA {
+  width: 260px;
+  height: 260px;
+  background: rgba(18, 181, 140, 0.24);
+  top: -80px;
+  left: -70px;
+}
+
+.glowB {
+  width: 280px;
+  height: 280px;
+  background: rgba(49, 141, 255, 0.2);
+  right: -90px;
+  bottom: -80px;
+}
+
+.loginCard {
+  position: relative;
+  width: min(100%, 980px);
+  border: 1px solid var(--line-soft);
+  border-radius: 26px;
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(16px);
+  box-shadow: var(--shadow-soft);
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  animation: cardIn 360ms ease;
+}
+
+.heroColumn {
+  border-radius: 18px;
+  background: linear-gradient(165deg, #0f172a 0%, #1a2848 60%, #27406e 100%);
+  color: #e8f0ff;
+  padding: 18px;
+  display: grid;
+  gap: 12px;
+}
+
+.kicker {
+  display: inline-flex;
+  width: fit-content;
+  border: 1px solid rgba(166, 196, 255, 0.42);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 0.76rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.heroColumn h1 {
+  font-family: var(--font-space-grotesk), "Segoe UI", sans-serif;
+  font-size: 1.75rem;
+  line-height: 1.15;
+}
+
+.description {
+  color: #bfd4fb;
+  max-width: 38ch;
+}
+
+.featureList {
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+
+.featureList li {
+  border: 1px solid rgba(166, 196, 255, 0.26);
+  border-radius: 12px;
+  background: rgba(180, 207, 255, 0.1);
+  padding: 10px;
+  font-size: 0.9rem;
+}
+
+.formColumn {
+  padding: 8px 4px 4px;
+  display: grid;
+  gap: 14px;
+}
+
+.formHeader h2 {
+  font-family: var(--font-space-grotesk), "Segoe UI", sans-serif;
+  font-size: 1.35rem;
+}
+
+.formHeader p {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.loginForm {
+  display: grid;
+  gap: 10px;
+}
+
+.loginForm label {
+  display: grid;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 0.87rem;
+}
+
+.loginForm input[type="email"],
+.loginForm input[type="password"] {
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  padding: 11px 12px;
+  background: #fff;
+  color: var(--text-primary);
+}
+
+.loginForm input[type="email"]:focus,
+.loginForm input[type="password"]:focus {
+  outline: 2px solid color-mix(in srgb, var(--brand) 35%, #fff 65%);
+  border-color: var(--brand);
+}
+
+.formMetaRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 2px;
+}
+
+.checkboxLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.formMetaRow a {
+  color: var(--brand-strong);
+  font-size: 0.84rem;
+}
+
+.formError {
+  border: 1px solid color-mix(in srgb, var(--alert) 28%, #fff 72%);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--alert) 10%, #fff 90%);
+  color: var(--alert);
+  padding: 10px 12px;
+  font-size: 0.88rem;
+}
+
+.primaryButton,
+.secondaryButton {
+  border: 0;
+  border-radius: 12px;
+  padding: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled {
+  cursor: wait;
+  opacity: 0.76;
+}
+
+.primaryButton {
+  color: #fff;
+  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-strong) 100%);
+}
+
+.secondaryButton {
+  border: 1px solid var(--line-soft);
+  background: #fff;
+  color: var(--text-primary);
+}
+
+.cardFooter {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 12px;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+}
+
+.cardFooter a {
+  color: var(--brand-strong);
+  font-weight: 600;
+}
+
+@media (min-width: 860px) {
+  .loginCard {
+    grid-template-columns: 1.05fr 1fr;
+    padding: 20px;
+    gap: 18px;
+  }
+
+  .heroColumn {
+    padding: 24px;
+  }
+
+  .heroColumn h1 {
+    font-size: 2rem;
+  }
+
+  .formColumn {
+    padding: 8px;
+  }
+}
+
+@keyframes cardIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
