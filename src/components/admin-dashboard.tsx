@@ -5,14 +5,16 @@ import type { AuthUser } from "@/lib/auth.server";
 import { useAuth } from "@/components/auth-context";
 import { AccessManagementPanel, type AccessSection } from "./access-management-panel";
 import { ReclamosPanel } from "./reclamos-panel";
+import { RoutingPanel } from "./routing-panel";
 import { LogoutButton } from "@/components/logout-button";
 import styles from "./admin-dashboard.module.css";
 
-type Section = "reclamos" | "metricas" | AccessSection;
+type Section = "reclamos" | "ruteo" | "metricas" | AccessSection;
 type Theme = "light" | "dark";
 
 const sectionTitles: Record<Section, string> = {
   reclamos: "Gestion de reclamos",
+  ruteo: "Ruteo y asignacion",
   metricas: "Metricas operativas",
   users: "Administracion de usuarios",
   roles: "Administracion de roles",
@@ -49,6 +51,21 @@ function MetricsIcon() {
         <path d="M11 16.5V7.5" />
         <path d="M15.5 16.5V10" />
         <path d="M20.5 5.5l-5 5-3-3-4 4" />
+      </svg>
+    </MenuIcon>
+  );
+}
+
+function RoutingIcon() {
+  return (
+    <MenuIcon>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4.5 6.5a2 2 0 1 1 4 0 2 2 0 0 1-4 0Z" />
+        <path d="M15.5 17.5a2 2 0 1 1 4 0 2 2 0 0 1-4 0Z" />
+        <path d="M7.5 6.5h5a3 3 0 0 1 3 3v1" />
+        <path d="M15.5 10.5l1.8 1.8-1.8 1.8" />
+        <path d="M15.5 17.5h-6a3 3 0 0 1-3-3v-1" />
+        <path d="M8.5 13.5 6.7 11.7l1.8-1.8" />
       </svg>
     </MenuIcon>
   );
@@ -156,6 +173,10 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
       );
     }
 
+    if (activeSection === "ruteo") {
+      return <RoutingPanel />;
+    }
+
     if (activeSection === "reclamos" && !canViewReclamos) {
       return (
         <section className={styles.placeholderCard}>
@@ -219,6 +240,19 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
             >
               <ReclamosIcon />
               <span className={styles.navLabel}>Reclamos</span>
+            </button>
+          )}
+          {canViewReclamos && (
+            <button
+              type="button"
+              data-active={activeSection === "ruteo"}
+              onClick={() => {
+                setActiveSection("ruteo");
+                setIsSidebarOpen(false);
+              }}
+            >
+              <RoutingIcon />
+              <span className={styles.navLabel}>Ruteo</span>
             </button>
           )}
           <button
