@@ -113,6 +113,11 @@
   font-size: 0.75rem;
 }
 
+.brandBlock > div {
+  min-width: 0;
+  transition: opacity 180ms ease, width 180ms ease, transform 180ms ease;
+}
+
 .brandDot {
   width: 12px;
   height: 12px;
@@ -131,12 +136,52 @@
   cursor: pointer;
 }
 
+.sidebarToggle {
+  border: 1px solid var(--sidebar-button-border);
+  background: var(--sidebar-button-bg);
+  color: inherit;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 5px;
+  transition: background 180ms ease, border-color 180ms ease, transform 180ms ease;
+}
+
+.sidebarToggle span {
+  width: 16px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  transition: transform 180ms ease, opacity 180ms ease;
+  transform-origin: center;
+}
+
+.sidebarToggle[data-open="true"] span:nth-child(1) {
+  transform: translateY(7px) rotate(45deg);
+}
+
+.sidebarToggle[data-open="true"] span:nth-child(2) {
+  opacity: 0;
+}
+
+.sidebarToggle[data-open="true"] span:nth-child(3) {
+  transform: translateY(-7px) rotate(-45deg);
+}
+
 .navMenu {
   display: grid;
   gap: 8px;
 }
 
 .navMenu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   text-align: left;
   font-size: 0.95rem;
   border: 0;
@@ -146,6 +191,24 @@
   background: transparent;
   cursor: pointer;
   transition: background 150ms ease;
+}
+
+.navIcon {
+  width: 1.35rem;
+  height: 1.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.navIcon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.navLabel {
+  white-space: nowrap;
 }
 
 .navMenu button:hover {
@@ -376,6 +439,18 @@
   border-color: #8edecc;
 }
 
+.statusPill[data-status="rechazado"] {
+  background: #fde8e6;
+  color: #7d2216;
+  border-color: #f5b5af;
+}
+
+.statusPill[data-status="cerrado"] {
+  background: #eaecf0;
+  color: #3e4654;
+  border-color: #bbc3d1;
+}
+
 .complaintCard h3 {
   font-size: 0.98rem;
 }
@@ -472,8 +547,241 @@
   max-width: 52ch;
 }
 
+.managementStack {
+  display: grid;
+  gap: 14px;
+}
+
+.managementHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 2px;
+}
+
+.managementHeader h2 {
+  font-family: var(--font-space-grotesk), "Segoe UI", sans-serif;
+  margin-bottom: 4px;
+}
+
+.managementHeader p,
+.helperText {
+  color: var(--text-muted);
+}
+
+.managementGrid {
+  display: grid;
+  gap: 14px;
+}
+
+.noticeBanner {
+  border-radius: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-soft);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.noticeBanner[data-tone="success"] {
+  border-color: color-mix(in srgb, var(--brand) 45%, #ffffff 55%);
+  background: color-mix(in srgb, var(--bg-surface) 85%, #dff8ee 15%);
+}
+
+.noticeBanner[data-tone="error"] {
+  border-color: color-mix(in srgb, var(--alert) 35%, #ffffff 65%);
+  background: color-mix(in srgb, var(--bg-surface) 88%, #ffe4e1 12%);
+}
+
+.inlineSearch {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.inlineSearch input {
+  width: 100%;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  padding: 10px 11px;
+  color: var(--text-primary);
+  background: var(--card-fallback-bg);
+}
+
+.selectField {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+  font-size: 0.86rem;
+  color: var(--text-muted);
+}
+
+.selectField select {
+  width: 100%;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  padding: 10px 11px;
+  color: var(--text-primary);
+  background: var(--card-fallback-bg);
+}
+
+.tableWrap {
+  overflow: auto;
+  border: 1px solid var(--line-soft);
+  border-radius: 14px;
+  margin-bottom: 14px;
+}
+
+.dataTable {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 640px;
+}
+
+.dataTable th,
+.dataTable td {
+  padding: 12px;
+  border-bottom: 1px solid var(--line-soft);
+  text-align: left;
+  vertical-align: top;
+}
+
+.dataTable th {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.dataTable tbody tr[data-selected="true"] {
+  background: color-mix(in srgb, var(--bg-surface-subtle) 82%, #dff8ee 18%);
+}
+
+.linkButton {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+
+.linkButton span {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.badge[data-tone="success"] {
+  background: #dcf8ef;
+  color: #145742;
+}
+
+.badge[data-tone="muted"] {
+  background: #e7edf5;
+  color: #445266;
+}
+
+.rowActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rowActions button {
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: var(--card-fallback-bg);
+  padding: 8px 10px;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--text-primary);
+}
+
+.subsectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.subsectionHeader h3 {
+  font-family: var(--font-space-grotesk), "Segoe UI", sans-serif;
+  font-size: 0.95rem;
+}
+
+.formGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+}
+
+.checkboxField {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+}
+
+.checkboxField input {
+  width: auto;
+}
+
+.assignmentStack {
+  display: grid;
+  gap: 18px;
+}
+
+.selectionGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+}
+
+.selectionItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: var(--bg-surface-subtle);
+}
+
+.selectionItem input {
+  width: auto;
+}
+
+.tagList {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.tagCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 14px;
+  background: var(--bg-surface-subtle);
+}
+
 .footer {
-  border-top: 1px solid var(--line-soft);
   padding: 12px 14px;
   color: var(--text-muted);
   font-size: 0.84rem;
@@ -482,13 +790,97 @@
   gap: 8px;
 }
 
+/* ─── Reclamos panel ─── */
+
+.reclamosFilters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+  align-items: center;
+}
+
+.reclamosSearchInput {
+  flex: 1 1 200px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  padding: 10px 11px;
+  color: var(--text-primary);
+  background: var(--card-fallback-bg);
+}
+
+.reclamosFilterSelect {
+  flex: 0 1 180px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  padding: 10px 11px;
+  color: var(--text-primary);
+  background: var(--card-fallback-bg);
+}
+
+.reclamoObservaciones {
+  font-size: 0.84rem;
+  color: var(--text-muted);
+}
+
+.form textarea {
+  width: 100%;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  padding: 10px 11px;
+  color: var(--text-primary);
+  background: var(--card-fallback-bg);
+  resize: vertical;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.form textarea:focus {
+  outline: 2px solid color-mix(in srgb, var(--brand) 38%, #fff 62%);
+  border-color: var(--brand);
+}
+
+.paginationRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 12px 0 4px;
+  font-size: 0.88rem;
+  color: var(--text-muted);
+}
+
+.paginationRow button {
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: var(--card-fallback-bg);
+  padding: 8px 12px;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--text-primary);
+}
+
+.paginationRow button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 @media (min-width: 700px) {
   .metricsGrid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .contentGrid {
     grid-template-columns: 1.3fr 1fr;
+  }
+
+  .managementGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .formGrid,
+  .selectionGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -512,11 +904,28 @@
     width: 92px;
   }
 
-  .sidebar[data-collapsed="true"] .brandBlock div,
-  .sidebar[data-collapsed="true"] .navMenu button {
+  .sidebar[data-collapsed="true"] .brandBlock {
+    justify-content: center;
+  }
+
+  .sidebar[data-collapsed="true"] .brandBlock > div {
+    width: 0;
+    opacity: 0;
     overflow: hidden;
-    white-space: nowrap;
-    text-overflow: clip;
+    transform: translateX(-8px);
+  }
+
+  .sidebar[data-collapsed="true"] .navMenu button {
+    justify-content: center;
+    padding-inline: 0;
+    min-height: 46px;
+    position: relative;
+  }
+
+  .sidebar[data-collapsed="true"] .navLabel {
+    width: 0;
+    overflow: hidden;
+    opacity: 0;
   }
 
   .topbar {
@@ -534,10 +943,6 @@
 
   .panel {
     padding: 16px;
-  }
-
-  .topbarLeft .iconButton {
-    display: none;
   }
 
   .footer {

@@ -1,69 +1,96 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { type ReactNode, useState } from "react";
 import type { AuthUser } from "@/lib/auth.server";
 import { useAuth } from "@/components/auth-context";
+import { AccessManagementPanel, type AccessSection } from "./access-management-panel";
+import { ReclamosPanel } from "./reclamos-panel";
 import { LogoutButton } from "@/components/logout-button";
 import styles from "./admin-dashboard.module.css";
 
-type ComplaintStatus = "Pendiente" | "En proceso" | "Resuelto";
-type ComplaintPriority = "Alta" | "Media" | "Baja";
-type Section = "reclamos" | "metricas" | "ajustes";
+type Section = "reclamos" | "metricas" | AccessSection;
 type Theme = "light" | "dark";
 
-type Complaint = {
-  id: number;
-  trackingCode: string;
-  customer: string;
-  subject: string;
-  status: ComplaintStatus;
-  priority: ComplaintPriority;
-  createdAt: string;
+const sectionTitles: Record<Section, string> = {
+  reclamos: "Gestion de reclamos",
+  metricas: "Metricas operativas",
+  users: "Administracion de usuarios",
+  roles: "Administracion de roles",
+  permissions: "Administracion de permisos",
 };
 
-type FormValues = {
-  customer: string;
-  subject: string;
-  status: ComplaintStatus;
-  priority: ComplaintPriority;
-};
+function MenuIcon({ children }: { children: ReactNode }) {
+  return (
+    <span className={styles.navIcon} aria-hidden="true">
+      {children}
+    </span>
+  );
+}
 
-const initialComplaints: Complaint[] = [
-  {
-    id: 1,
-    trackingCode: "REC-2026-001",
-    customer: "Maria Gomez",
-    subject: "Demora en asistencia tecnica",
-    status: "Pendiente",
-    priority: "Alta",
-    createdAt: "2026-05-09",
-  },
-  {
-    id: 2,
-    trackingCode: "REC-2026-002",
-    customer: "Carlos Pena",
-    subject: "Error en facturacion",
-    status: "En proceso",
-    priority: "Media",
-    createdAt: "2026-05-10",
-  },
-  {
-    id: 3,
-    trackingCode: "REC-2026-003",
-    customer: "Lucia Rojas",
-    subject: "Incumplimiento de horario",
-    status: "Resuelto",
-    priority: "Baja",
-    createdAt: "2026-05-11",
-  },
-];
+function ReclamosIcon() {
+  return (
+    <MenuIcon>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M6 4.5h12a1.5 1.5 0 0 1 1.5 1.5v12A1.5 1.5 0 0 1 18 19.5H6A1.5 1.5 0 0 1 4.5 18V6A1.5 1.5 0 0 1 6 4.5Z" />
+        <path d="M8 8h8" />
+        <path d="M8 12h8" />
+        <path d="M8 16h5" />
+      </svg>
+    </MenuIcon>
+  );
+}
 
-const emptyForm: FormValues = {
-  customer: "",
-  subject: "",
-  status: "Pendiente",
-  priority: "Media",
-};
+function MetricsIcon() {
+  return (
+    <MenuIcon>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4.5 19.5h15" />
+        <path d="M6.5 16.5V12" />
+        <path d="M11 16.5V7.5" />
+        <path d="M15.5 16.5V10" />
+        <path d="M20.5 5.5l-5 5-3-3-4 4" />
+      </svg>
+    </MenuIcon>
+  );
+}
+
+function UsersIcon() {
+  return (
+    <MenuIcon>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M16.5 20v-1.5A4.5 4.5 0 0 0 12 14h-4A4.5 4.5 0 0 0 3.5 18.5V20" />
+        <path d="M10 10.5A3.5 3.5 0 1 0 10 3.5a3.5 3.5 0 0 0 0 7Z" />
+        <path d="M20.5 20v-1a4 4 0 0 0-3-3.87" />
+        <path d="M16.5 3.9a3.2 3.2 0 0 1 0 6.2" />
+      </svg>
+    </MenuIcon>
+  );
+}
+
+function RolesIcon() {
+  return (
+    <MenuIcon>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M5.5 7.5h13" />
+        <path d="M5.5 12h9.5" />
+        <path d="M5.5 16.5h13" />
+        <path d="M18.5 6.5l2 1-2 1" />
+      </svg>
+    </MenuIcon>
+  );
+}
+
+function PermissionsIcon() {
+  return (
+    <MenuIcon>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M14.5 4.5a5 5 0 1 0 5 5" />
+        <path d="M14.5 4.5 9 10v3h3l5.5-5.5" />
+        <path d="M9 10l2.5 2.5" />
+      </svg>
+    </MenuIcon>
+  );
+}
 
 type AdminDashboardProps = {
   user: AuthUser;
@@ -73,16 +100,11 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
   const { hasRole, hasPermission } = useAuth();
 
   const canViewReclamos = hasPermission("VIEW_RECLAMOS") || hasRole("ADMIN") || hasRole("AGENT");
-  const canManageReclamos = hasPermission("MANAGE_RECLAMOS") || hasRole("ADMIN");
-  const canDeleteReclamos = hasPermission("DELETE_RECLAMOS") || hasRole("ADMIN");
-  const canViewAjustes = hasRole("ADMIN");
+  const canManageAccess = hasRole("ADMIN");
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [activeSection, setActiveSection] = useState<Section>("reclamos");
-  const [complaints, setComplaints] = useState<Complaint[]>(initialComplaints);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [formValues, setFormValues] = useState<FormValues>(emptyForm);
 
   const [theme, setTheme] = useState<Theme>(() => {
     if (typeof window === "undefined") {
@@ -100,94 +122,25 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
       : "light";
   });
 
+  const handleSidebarToggle = () => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (window.matchMedia("(min-width: 1024px)").matches) {
+      setIsSidebarCollapsed((prev) => !prev);
+      return;
+    }
+
+    setIsSidebarOpen((prev) => !prev);
+  };
+
   const toggleTheme = () => {
     setTheme((prev) => {
       const nextTheme: Theme = prev === "light" ? "dark" : "light";
       window.localStorage.setItem("dashboard-theme", nextTheme);
       return nextTheme;
     });
-  };
-
-  const totalOpen = useMemo(
-    () => complaints.filter((item) => item.status !== "Resuelto").length,
-    [complaints],
-  );
-
-  const nextId = useMemo(
-    () => Math.max(0, ...complaints.map((item) => item.id)) + 1,
-    [complaints],
-  );
-
-  const updateFormField = <K extends keyof FormValues>(
-    field: K,
-    value: FormValues[K],
-  ) => {
-    setFormValues((prev) => ({ ...prev, [field]: value }));
-  };
-
-  const resetForm = () => {
-    setEditingId(null);
-    setFormValues(emptyForm);
-  };
-
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    if (!formValues.customer.trim() || !formValues.subject.trim()) {
-      return;
-    }
-
-    if (editingId !== null) {
-      setComplaints((prev) =>
-        prev.map((item) =>
-          item.id === editingId
-            ? {
-                ...item,
-                customer: formValues.customer.trim(),
-                subject: formValues.subject.trim(),
-                status: formValues.status,
-                priority: formValues.priority,
-              }
-            : item,
-        ),
-      );
-      resetForm();
-      return;
-    }
-
-    const now = new Date();
-    const createdAt = now.toISOString().slice(0, 10);
-
-    const newComplaint: Complaint = {
-      id: nextId,
-      trackingCode: `REC-${now.getFullYear()}-${String(nextId).padStart(3, "0")}`,
-      customer: formValues.customer.trim(),
-      subject: formValues.subject.trim(),
-      status: formValues.status,
-      priority: formValues.priority,
-      createdAt,
-    };
-
-    setComplaints((prev) => [newComplaint, ...prev]);
-    resetForm();
-  };
-
-  const startEdit = (item: Complaint) => {
-    setEditingId(item.id);
-    setFormValues({
-      customer: item.customer,
-      subject: item.subject,
-      status: item.status,
-      priority: item.priority,
-    });
-  };
-
-  const removeComplaint = (id: number) => {
-    setComplaints((prev) => prev.filter((item) => item.id !== id));
-
-    if (editingId === id) {
-      resetForm();
-    }
   };
 
   const renderMainContent = () => {
@@ -197,8 +150,9 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
           <h2>Metricas</h2>
           <p>
             Aqui puedes agregar graficos y reportes del flujo de reclamos cuando
-            conectemos con los microservicios.</p>
-          </section>
+            conectemos con los microservicios.
+          </p>
+        </section>
       );
     }
 
@@ -211,174 +165,23 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
       );
     }
 
-    if (activeSection === "ajustes") {
-      if (!canViewAjustes) {
+    if (
+      activeSection === "users" ||
+      activeSection === "roles" ||
+      activeSection === "permissions"
+    ) {
+      if (!canManageAccess) {
         return (
           <section className={styles.placeholderCard}>
             <h2>Acceso denegado</h2>
-            <p>No tienes permisos para acceder a Ajustes.</p>
+            <p>No tienes permisos para acceder a esta sección administrativa.</p>
           </section>
         );
       }
-      return (
-        <section className={styles.placeholderCard}>
-          <h2>Ajustes</h2>
-          <p>
-            Seccion lista para configurar usuarios, permisos y reglas de
-            negocio del panel.
-          </p>
-        </section>
-      );
+      return <AccessManagementPanel section={activeSection} />;
     }
 
-    return (
-      <>
-        <section className={styles.metricsGrid}>
-          <article className={styles.metricCard}>
-            <p>Total reclamos</p>
-            <strong>{complaints.length}</strong>
-          </article>
-          <article className={styles.metricCard}>
-            <p>Activos</p>
-            <strong>{totalOpen}</strong>
-          </article>
-          <article className={styles.metricCard}>
-            <p>Resueltos</p>
-            <strong>{complaints.length - totalOpen}</strong>
-          </article>
-        </section>
-
-        <section className={styles.contentGrid}>
-          <article className={styles.panel}>
-            <header className={styles.panelHeader}>
-              <h2>Listado de reclamos</h2>
-              <span>{complaints.length} registros</span>
-            </header>
-
-            <div className={styles.complaintsList}>
-              {complaints.map((item) => (
-                <article className={styles.complaintCard} key={item.id}>
-                  <div className={styles.complaintTopRow}>
-                    <span className={styles.trackingCode}>{item.trackingCode}</span>
-                    <span
-                      className={styles.statusPill}
-                      data-status={item.status.replace(" ", "-").toLowerCase()}
-                    >
-                      {item.status}
-                    </span>
-                  </div>
-
-                  <h3>{item.subject}</h3>
-                  <p>{item.customer}</p>
-
-                  <div className={styles.complaintMeta}>
-                    <span>Prioridad: {item.priority}</span>
-                    <span>Fecha: {item.createdAt}</span>
-                  </div>
-
-                  <div className={styles.actionsRow}>
-                    {canManageReclamos && (
-                      <button type="button" onClick={() => startEdit(item)}>
-                        Editar
-                      </button>
-                    )}
-                    {canDeleteReclamos && (
-                      <button
-                        type="button"
-                        className={styles.dangerButton}
-                        onClick={() => removeComplaint(item.id)}
-                      >
-                        Eliminar
-                      </button>
-                    )}
-                  </div>
-                </article>
-              ))}
-            </div>
-          </article>
-
-          {canManageReclamos && (
-          <article className={styles.panel}>
-            <header className={styles.panelHeader}>
-              <h2>{editingId !== null ? "Editar reclamo" : "Nuevo reclamo"}</h2>
-              {editingId !== null ? (
-                <button
-                  className={styles.cancelInlineButton}
-                  type="button"
-                  onClick={resetForm}
-                >
-                  Cancelar edicion
-                </button>
-              ) : null}
-            </header>
-
-            <form className={styles.form} onSubmit={handleSubmit}>
-              <label>
-                Cliente
-                <input
-                  type="text"
-                  value={formValues.customer}
-                  onChange={(event) =>
-                    updateFormField("customer", event.target.value)
-                  }
-                  placeholder="Nombre del cliente"
-                  required
-                />
-              </label>
-
-              <label>
-                Asunto
-                <input
-                  type="text"
-                  value={formValues.subject}
-                  onChange={(event) =>
-                    updateFormField("subject", event.target.value)
-                  }
-                  placeholder="Resumen del reclamo"
-                  required
-                />
-              </label>
-
-              <label>
-                Estado
-                <select
-                  value={formValues.status}
-                  onChange={(event) =>
-                    updateFormField("status", event.target.value as ComplaintStatus)
-                  }
-                >
-                  <option value="Pendiente">Pendiente</option>
-                  <option value="En proceso">En proceso</option>
-                  <option value="Resuelto">Resuelto</option>
-                </select>
-              </label>
-
-              <label>
-                Prioridad
-                <select
-                  value={formValues.priority}
-                  onChange={(event) =>
-                    updateFormField(
-                      "priority",
-                      event.target.value as ComplaintPriority,
-                    )
-                  }
-                >
-                  <option value="Alta">Alta</option>
-                  <option value="Media">Media</option>
-                  <option value="Baja">Baja</option>
-                </select>
-              </label>
-
-              <button className={styles.submitButton} type="submit">
-                {editingId !== null ? "Guardar cambios" : "Crear reclamo"}
-              </button>
-            </form>
-          </article>
-          )}
-        </section>
-      </>
-    );
+    return <ReclamosPanel />;
   };
 
   return (
@@ -402,15 +205,6 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
               <small>Admin dashboard</small>
             </div>
           </div>
-
-          <button
-            className={styles.iconButton}
-            type="button"
-            onClick={() => setIsSidebarCollapsed((prev) => !prev)}
-            aria-label="Alternar ancho del sidebar"
-          >
-            {isSidebarCollapsed ? ">" : "<"}
-          </button>
         </div>
 
         <nav className={styles.navMenu}>
@@ -423,7 +217,8 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
                 setIsSidebarOpen(false);
               }}
             >
-              Reclamos
+              <ReclamosIcon />
+              <span className={styles.navLabel}>Reclamos</span>
             </button>
           )}
           <button
@@ -434,19 +229,45 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
               setIsSidebarOpen(false);
             }}
           >
-            Metricas
+            <MetricsIcon />
+            <span className={styles.navLabel}>Metricas</span>
           </button>
-          {canViewAjustes && (
-            <button
-              type="button"
-              data-active={activeSection === "ajustes"}
-              onClick={() => {
-                setActiveSection("ajustes");
-                setIsSidebarOpen(false);
-              }}
-            >
-              Ajustes
-            </button>
+          {canManageAccess && (
+            <>
+              <button
+                type="button"
+                data-active={activeSection === "users"}
+                onClick={() => {
+                  setActiveSection("users");
+                  setIsSidebarOpen(false);
+                }}
+              >
+                <UsersIcon />
+                <span className={styles.navLabel}>Usuarios</span>
+              </button>
+              <button
+                type="button"
+                data-active={activeSection === "roles"}
+                onClick={() => {
+                  setActiveSection("roles");
+                  setIsSidebarOpen(false);
+                }}
+              >
+                <RolesIcon />
+                <span className={styles.navLabel}>Roles</span>
+              </button>
+              <button
+                type="button"
+                data-active={activeSection === "permissions"}
+                onClick={() => {
+                  setActiveSection("permissions");
+                  setIsSidebarOpen(false);
+                }}
+              >
+                <PermissionsIcon />
+                <span className={styles.navLabel}>Permisos</span>
+              </button>
+            </>
           )}
         </nav>
       </aside>
@@ -455,16 +276,20 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
         <header className={styles.topbar}>
           <div className={styles.topbarLeft}>
             <button
-              className={styles.iconButton}
+              className={styles.sidebarToggle}
               type="button"
-              onClick={() => setIsSidebarOpen((prev) => !prev)}
-              aria-label="Abrir menu lateral"
+              onClick={handleSidebarToggle}
+              aria-label="Abrir o cerrar menu lateral"
+              aria-expanded={isSidebarOpen || !isSidebarCollapsed}
+              data-open={isSidebarOpen || !isSidebarCollapsed}
             >
-              ≡
+              <span />
+              <span />
+              <span />
             </button>
             <div>
               <p>Panel administrativo</p>
-              <strong>Gestion de reclamos</strong>
+              <strong>{sectionTitles[activeSection]}</strong>
             </div>
           </div>
 
