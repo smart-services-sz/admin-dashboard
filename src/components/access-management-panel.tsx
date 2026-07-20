@@ -94,6 +94,10 @@ export function AccessManagementPanel({ section }: AccessManagementPanelProps) {
     () => users.find((user) => user.id === selectedUserId) ?? null,
     [users, selectedUserId],
   );
+  const agentRole = useMemo(
+    () => roles.find((role) => role.name.trim().toUpperCase() === "AGENT") ?? null,
+    [roles],
+  );
 
   const selectedRole = useMemo(
     () => roles.find((role) => role.id === selectedRoleId) ?? null,
@@ -455,6 +459,48 @@ export function AccessManagementPanel({ section }: AccessManagementPanelProps) {
     }
   }
 
+  async function handleToggleAgentRole(user: ManagedUser) {
+    if (!agentRole) {
+      setNotice({
+        tone: "error",
+        message: "No existe el rol AGENT en la base de accesos.",
+      });
+      return;
+    }
+
+    const actionKey = `toggle-agent-${user.id}`;
+    setBusyAction(actionKey);
+    setNotice(null);
+
+    try {
+      const currentRoles = await accessControlService.getUserRoles(user.id);
+      const hasAgent = currentRoles.some((role) => role.id === agentRole.id);
+      const nextRoleIds = hasAgent
+        ? currentRoles.filter((role) => role.id !== agentRole.id).map((role) => role.id)
+        : [...currentRoles.map((role) => role.id), agentRole.id];
+
+      await accessControlService.setUserRoles(user.id, nextRoleIds);
+
+      if (selectedUserId === user.id) {
+        await loadUserAssignments(user.id);
+      }
+
+      setNotice({
+        tone: "success",
+        message: hasAgent
+          ? `Rol AGENT removido de ${user.email}.`
+          : `Rol AGENT asignado a ${user.email}.`,
+      });
+    } catch (error) {
+      setNotice({
+        tone: "error",
+        message: error instanceof Error ? error.message : "No se pudo actualizar el rol AGENT del usuario.",
+      });
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
   async function saveUserPermissions() {
     if (!selectedUserId) {
       return;
@@ -555,6 +601,13 @@ export function AccessManagementPanel({ section }: AccessManagementPanelProps) {
                       <div className={styles.rowActions}>
                         <button type="button" onClick={() => handleEditUser(user)}>
                           Editar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleToggleAgentRole(user)}
+                          disabled={busyAction === `toggle-agent-${user.id}` || !agentRole}
+                        >
+                          {busyAction === `toggle-agent-${user.id}` ? "Guardando..." : "Asignar/Quitar AGENT"}
                         </button>
                         <button
                           type="button"
