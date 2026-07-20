@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   routingService,
   type RoutingRulesResponse,
   type RoutingSimulationResult,
   type UpsertRoutingRulesPayload,
 } from "@/services/routing.service";
+import { accessControlService, type ManagedUser } from "@/services/access-control.service";
 import styles from "./routing-panel.module.css";
 
 const DEFAULT_RULES: UpsertRoutingRulesPayload = {
@@ -57,6 +58,8 @@ export function RoutingPanel() {
   const [selectedCrewId, setSelectedCrewId] = useState<string>("");
   const [categoryQuotaByKey, setCategoryQuotaByKey] = useState<Record<string, number>>({});
   const [crewQuotaByKey, setCrewQuotaByKey] = useState<Record<string, number>>({});
+  const [operationalUsers, setOperationalUsers] = useState<ManagedUser[]>([]);
+  const [selectedOperationalUserIds, setSelectedOperationalUserIds] = useState<string[]>([]);
 
   const humanizeReason = (reason: string): string => {
     const dictionary: Record<string, string> = {
@@ -65,6 +68,20 @@ export function RoutingPanel() {
     };
     return dictionary[reason] ?? reason;
   };
+
+  useEffect(() => {
+    const loadOperationalUsers = async () => {
+      try {
+        const response = await accessControlService.getUsers();
+        const activeUsers = response.data.filter((user) => user.isActive);
+        setOperationalUsers(activeUsers);
+      } catch {
+        // Non-blocking: routing config can still work with existing persisted rules.
+      }
+    };
+
+    void loadOperationalUsers();
+  }, []);
 
   const topStops = useMemo(() => {
     if (!simulation) return [];
@@ -248,17 +265,35 @@ export function RoutingPanel() {
           ? baseRules
           : DEFAULT_RULES;
 
+      const selectedUsers = operationalUsers.filter((user) => selectedOperationalUserIds.includes(user.id));
+
+      const usersBasedCrews = selectedUsers.map((user) => ({
+        crewId: user.id,
+        userId: user.id,
+        nombre: user.name || user.email,
+        userName: user.name || user.email,
+        maxReclamosDiarios: dailyByUser,
+        allowedCategorias: seedSource.categoryRules.map((rule) => rule.categoria),
+        allowedZoneIds: seedSource.zones?.map((zone) => zone.id) ?? [],
+        startLat: originLat,
+        startLng: originLng,
+      }));
+
+      const fallbackCrews = seedSource.crews.map((crew) => ({
+        ...crew,
+        userId: crew.userId ?? crew.crewId,
+        userName: crew.userName ?? crew.nombre ?? crew.crewId,
+        maxReclamosDiarios: dailyByUser,
+        startLat: originLat,
+        startLng: originLng,
+      }));
+
       const payload: UpsertRoutingRulesPayload = {
         categoryRules: seedSource.categoryRules.map((rule) => ({
           ...rule,
           cupoDiario: dailyByCategory,
         })),
-        crews: seedSource.crews.map((crew) => ({
-          ...crew,
-          maxReclamosDiarios: dailyByUser,
-          startLat: originLat,
-          startLng: originLng,
-        })),
+        crews: usersBasedCrews.length > 0 ? usersBasedCrews : fallbackCrews,
         zones: seedSource.zones,
       };
 
@@ -266,7 +301,11 @@ export function RoutingPanel() {
       const refreshed = await routingService.getRules();
       setRules(refreshed);
       hydrateQuotaEditors(refreshed.data);
-      setOkMessage("Configuracion basica aplicada: origen + cupos diarios por usuario/categoria.");
+      setOkMessage(
+        usersBasedCrews.length > 0
+          ? "Configuracion aplicada con usuarios operativos seleccionados."
+          : "Configuracion basica aplicada: origen + cupos diarios por usuario/categoria.",
+      );
     });
   };
 
@@ -402,6 +441,36 @@ export function RoutingPanel() {
           <p className={styles.subtle}>
             Esta seccion aplica valores generales a todas las reglas: punto de salida comun y cupos diarios por defecto.
           </p>
+
+          <div className={styles.formSection}>
+            <h5 className={styles.sectionTitle}>Usuarios operativos para asignacion</h5>
+            <p className={styles.subtle}>
+              Selecciona los usuarios que podran recibir rutas. Si no seleccionas ninguno, se usan los usuarios ya guardados en las reglas.
+            </p>
+            {operationalUsers.length === 0 ? (
+              <p className={styles.subtle}>No se pudieron cargar usuarios activos o no hay usuarios disponibles.</p>
+            ) : (
+              <div className={styles.grid}>
+                {operationalUsers.map((user) => (
+                  <label key={user.id} className={styles.checkbox}>
+                    <input
+                      type="checkbox"
+                      checked={selectedOperationalUserIds.includes(user.id)}
+                      onChange={(e) => {
+                        setSelectedOperationalUserIds((current) =>
+                          e.target.checked
+                            ? [...current, user.id]
+                            : current.filter((item) => item !== user.id),
+                        );
+                      }}
+                    />
+                    <span>{user.name || user.email}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className={styles.fieldGrid}>
             <label className={styles.field} htmlFor="origin-query">
               <span>Buscar punto de origen por direccion</span>
