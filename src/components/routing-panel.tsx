@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import {
   routingService,
   type RoutingAreaPlan,
+  type RoutingPlanListItem,
+  type RoutingPlanResponse,
   type RoutingRulesResponse,
   type RoutingSimulationResult,
   type RoutingZoneRule,
@@ -69,6 +71,7 @@ export function RoutingPanel() {
   const [planName, setPlanName] = useState<string>("");
   const [savedAreaPlans, setSavedAreaPlans] = useState<RoutingAreaPlan[]>([]);
   const [activeAreaPlanId, setActiveAreaPlanId] = useState<string>("");
+  const [routePlans, setRoutePlans] = useState<RoutingPlanListItem[]>([]);
 
   const humanizeReason = (reason: string): string => {
     const dictionary: Record<string, string> = {
@@ -228,6 +231,49 @@ export function RoutingPanel() {
     }
   };
 
+  const loadRoutePlans = async () => {
+    const response = await routingService.getPlans();
+    setRoutePlans(response.data);
+  };
+
+  const mapPlanToSimulation = (plan: RoutingPlanResponse["data"]): RoutingSimulationResult => ({
+    status: "ok",
+    generatedAt: plan.planningDate,
+    planningDate: plan.planningDate,
+    summary: {
+      totalFetched: Number((plan.summary.totalFetched as number | undefined) ?? 0),
+      totalCandidateAfterRules: Number((plan.summary.totalCandidateAfterRules as number | undefined) ?? 0),
+      totalAssigned: plan.routes.reduce((acc, route) => acc + route.assignedClaims, 0),
+      totalUnassigned: plan.unassigned.length,
+      unassignedByReason: (plan.summary.unassignedByReason as Record<string, number> | undefined) ?? {},
+      categoryQuotaConsumption: (plan.summary.categoryQuotaConsumption as Record<string, number> | undefined) ?? {},
+      googleOptimization:
+        (plan.summary.googleOptimization as {
+          enabled: boolean;
+          optimizedRoutes: number;
+          failedRoutes: number;
+        } | undefined) ?? {
+          enabled: false,
+          optimizedRoutes: 0,
+          failedRoutes: 0,
+        },
+    },
+    routes: plan.routes,
+    unassigned: plan.unassigned.map((item) => ({ reclamoId: item.reclamoId, reason: item.reason })),
+    savedPlanId: plan.id,
+  });
+
+  const handleLoadPersistedPlan = async (planId: string) => {
+    await runAction(async () => {
+      const response = await routingService.getPlan(planId);
+      const mapped = mapPlanToSimulation(response.data);
+      setSimulation(mapped);
+      setSelectedCrewId(mapped.routes[0]?.crewId ?? "");
+      rememberPlanId(response.data.id);
+      setOkMessage(`Plan cargado: ${response.data.id}`);
+    });
+  };
+
   const rememberPlanId = (planId: string) => {
     setLastPlanId(planId);
     if (typeof window !== "undefined") {
@@ -238,16 +284,18 @@ export function RoutingPanel() {
   useEffect(() => {
     const loadInitialRoutingState = async () => {
       try {
-        const [usersResponse, rulesResponse, areaPlansResponse] = await Promise.all([
+        const [usersResponse, rulesResponse, areaPlansResponse, routePlansResponse] = await Promise.all([
           accessControlService.getActiveUsersByRole("AGENT"),
           routingService.getRules(),
           routingService.getAreaPlans(),
+          routingService.getPlans(),
         ]);
 
         const agentUsers = usersResponse.data;
         setOperationalUsers(agentUsers);
         setRules(rulesResponse);
         setSavedAreaPlans(areaPlansResponse.data);
+        setRoutePlans(routePlansResponse.data);
         hydrateFormFromRules(rulesResponse.data, agentUsers);
 
         if (typeof window !== "undefined") {
@@ -437,6 +485,7 @@ export function RoutingPanel() {
       setSimulation(response);
       setSelectedCrewId(response.routes?.[0]?.crewId ?? "");
       if (response.savedPlanId) rememberPlanId(response.savedPlanId);
+      await loadRoutePlans();
       setOkMessage(`Plan generado. ID: ${response.savedPlanId ?? "sin id"}`);
     });
   };
@@ -449,6 +498,15 @@ export function RoutingPanel() {
 
     await runAction(async () => {
       const result = await routingService.confirmPlan(lastPlanId.trim());
+      setOkMessage(result.message || "Plan confirmado.");
+    });
+  };
+
+  const handleConfirmPlanById = async (planId: string) => {
+    await runAction(async () => {
+      const result = await routingService.confirmPlan(planId);
+      rememberPlanId(planId);
+      await loadRoutePlans();
       setOkMessage(result.message || "Plan confirmado.");
     });
   };
@@ -470,6 +528,7 @@ export function RoutingPanel() {
         throw new Error("No se pudo obtener planId al generar.");
       }
       rememberPlanId(generated.savedPlanId);
+      await loadRoutePlans();
       const confirmation = await routingService.confirmPlan(generated.savedPlanId);
       setOkMessage(`Plan generado y confirmado. ${confirmation.message}`);
     });
@@ -642,6 +701,49 @@ export function RoutingPanel() {
             <button className={styles.buttonPrimary} type="button" onClick={handleGenerateAndConfirm} disabled={loading}>
               Generar y confirmar ruta
             </button>
+          </div>
+
+          <div className={styles.formSection}>
+            <h5 className={styles.sectionTitle}>Historial de rutas generadas</h5>
+            {routePlans.length === 0 ? (
+              <p className={styles.subtle}>Todavia no hay planes de ruta persistidos.</p>
+            ) : (
+              <div className={styles.tableWrap}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Fecha plan</th>
+                      <th>Estado</th>
+                      <th>Asignados</th>
+                      <th>No asignados</th>
+                      <th>Rutas</th>
+                      <th>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {routePlans.map((plan) => (
+                      <tr key={plan.id}>
+                        <td>{new Date(plan.planningDate).toLocaleDateString()}</td>
+                        <td>{plan.status}</td>
+                        <td>{plan.totalAssigned}</td>
+                        <td>{plan.totalUnassigned}</td>
+                        <td>{plan.routes.map((route) => `${route.nombre} (${route.assignedClaims})`).join(", ") || "-"}</td>
+                        <td>
+                          <div className={styles.actionsRow}>
+                            <button className={styles.buttonSecondary} type="button" onClick={() => void handleLoadPersistedPlan(plan.id)} disabled={loading}>
+                              Abrir
+                            </button>
+                            <button className={styles.buttonSecondary} type="button" onClick={() => void handleConfirmPlanById(plan.id)} disabled={loading || plan.status === "confirmed"}>
+                              Confirmar
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
 

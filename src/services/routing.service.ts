@@ -149,6 +149,22 @@ export interface RoutingAreaPlan {
   updatedAt: string;
 }
 
+export interface RoutingPlanListItem {
+  id: string;
+  planningDate: string;
+  status: "proposed" | "confirmed" | "cancelled" | string;
+  createdAt: string;
+  updatedAt: string;
+  totalRoutes: number;
+  totalUnassigned: number;
+  totalAssigned: number;
+  routes: Array<{
+    crewId: string;
+    nombre: string;
+    assignedClaims: number;
+  }>;
+}
+
 class RoutingService {
   getRules(): Promise<RoutingRulesResponse> {
     return apiFetch<RoutingRulesResponse>(`${BASE}/rules`);
@@ -156,6 +172,10 @@ class RoutingService {
 
   getAreaPlans(): Promise<{ status: string; data: RoutingAreaPlan[] }> {
     return apiFetch<{ status: string; data: RoutingAreaPlan[] }>(`${BASE}/area-plans`);
+  }
+
+  getPlans(): Promise<{ status: string; data: RoutingPlanListItem[] }> {
+    return apiFetch<{ status: string; data: RoutingPlanListItem[] }>(`${BASE}/plans`);
   }
 
   saveAreaPlan(payload: Omit<RoutingAreaPlan, "createdAt" | "updatedAt">): Promise<{ status: string; data: RoutingAreaPlan }> {
