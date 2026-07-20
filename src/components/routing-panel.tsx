@@ -305,7 +305,8 @@ export function RoutingPanel() {
           userName: selectedUser.name || selectedUser.email,
           maxReclamosDiarios: dailyByUser,
           allowedCategorias: effectiveCategoryRules.map((rule) => rule.categoria),
-          allowedZoneIds: seedSource.zones?.map((zone) => zone.id) ?? [],
+          // In the simplified flow, the selected AGENT can receive claims from any zone.
+          allowedZoneIds: [],
           startLat: originLat,
           startLng: originLng,
         },
@@ -326,11 +327,13 @@ export function RoutingPanel() {
 
   const handleSimulate = async () => {
     await runAction(async () => {
+      const overrideRules = await buildFastAssignmentPayload();
       const response = await routingService.simulate({
         maxFetch,
         useGoogleOptimization,
         originLat,
         originLng,
+        overrideRules,
       });
       setSimulation(response);
       setSelectedCrewId(response.routes?.[0]?.crewId ?? "");
@@ -343,11 +346,15 @@ export function RoutingPanel() {
 
   const handleGenerate = async () => {
     await runAction(async () => {
+      const overrideRules = await buildFastAssignmentPayload();
+      await routingService.upsertRules(overrideRules);
+
       const response = await routingService.generate({
         maxFetch,
         useGoogleOptimization,
         originLat,
         originLng,
+        overrideRules,
       });
       setSimulation(response);
       setSelectedCrewId(response.routes?.[0]?.crewId ?? "");
