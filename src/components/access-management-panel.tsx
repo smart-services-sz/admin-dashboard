@@ -77,6 +77,7 @@ export function AccessManagementPanel({ section }: AccessManagementPanelProps) {
   const [permissions, setPermissions] = useState<PermissionRecord[]>([]);
   const [selectedUserId, setSelectedUserId] = useState("");
   const [selectedRoleId, setSelectedRoleId] = useState("");
+  const [agentUserIds, setAgentUserIds] = useState<string[]>([]);
   const [assignedRoleIds, setAssignedRoleIds] = useState<string[]>([]);
   const [assignedPermissionIds, setAssignedPermissionIds] = useState<string[]>([]);
   const [assignedRolePermissionIds, setAssignedRolePermissionIds] = useState<string[]>([]);
@@ -109,15 +110,17 @@ export function AccessManagementPanel({ section }: AccessManagementPanelProps) {
     setNotice(null);
 
     try {
-      const [usersResponse, rolesResponse, permissionsResponse] = await Promise.all([
+      const [usersResponse, rolesResponse, permissionsResponse, agentUsersResponse] = await Promise.all([
         accessControlService.getUsers(searchValue),
         accessControlService.getRoles(),
         accessControlService.getPermissions(),
+        accessControlService.getUsersByRole("AGENT"),
       ]);
 
       setUsers(usersResponse.data);
       setRoles(rolesResponse.data);
       setPermissions(permissionsResponse.data);
+      setAgentUserIds(agentUsersResponse.data.map((user) => user.id));
 
       const nextUserId = usersResponse.data.some((user) => user.id === selectedUserId)
         ? selectedUserId
@@ -480,6 +483,7 @@ export function AccessManagementPanel({ section }: AccessManagementPanelProps) {
         : [...currentRoles.map((role) => role.id), agentRole.id];
 
       await accessControlService.setUserRoles(user.id, nextRoleIds);
+      await loadCoreData();
 
       if (selectedUserId === user.id) {
         await loadUserAssignments(user.id);
@@ -578,6 +582,7 @@ export function AccessManagementPanel({ section }: AccessManagementPanelProps) {
                 <tr>
                   <th>Usuario</th>
                   <th>Area</th>
+                  <th>AGENT</th>
                   <th>Estado</th>
                   <th>Acciones</th>
                 </tr>
@@ -592,6 +597,14 @@ export function AccessManagementPanel({ section }: AccessManagementPanelProps) {
                       </button>
                     </td>
                     <td>{user.area || "-"}</td>
+                    <td>
+                      <span
+                        className={styles.badge}
+                        data-tone={agentUserIds.includes(user.id) ? "success" : "muted"}
+                      >
+                        {agentUserIds.includes(user.id) ? "Si" : "No"}
+                      </span>
+                    </td>
                     <td>
                       <span className={styles.badge} data-tone={user.isActive ? "success" : "muted"}>
                         {user.isActive ? "Activo" : "Inactivo"}

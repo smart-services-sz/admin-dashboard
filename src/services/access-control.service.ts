@@ -83,15 +83,19 @@ class AccessControlService {
     return apiFetch<PaginatedResponse<ManagedUser>>(withSearch(endpoints.users, search));
   }
 
-  getActiveUsersByRole(roleName: string) {
+  getUsersByRole(roleName: string, options?: { isActive?: boolean }) {
     return apiFetch<PaginatedResponse<ManagedUser>>(
       withQuery(endpoints.users, {
         page: "1",
         limit: "100",
         role: roleName,
-        isActive: "true",
+        isActive: typeof options?.isActive === "boolean" ? String(options.isActive) : undefined,
       }),
     );
+  }
+
+  getActiveUsersByRole(roleName: string) {
+    return this.getUsersByRole(roleName, { isActive: true });
   }
 
   createUser(payload: UserFormPayload) {
