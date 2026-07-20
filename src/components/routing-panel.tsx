@@ -42,6 +42,20 @@ const DEFAULT_RULES: UpsertRoutingRulesPayload = {
 };
 
 const LAST_ROUTING_PLAN_ID_KEY = "routing:lastPlanId";
+const ROUTING_AREA_PLANS_KEY = "routing:areaPlans";
+const ROUTING_ACTIVE_AREA_PLAN_ID_KEY = "routing:activeAreaPlanId";
+
+type RoutingAreaPlanDraft = {
+  id: string;
+  name: string;
+  userId: string;
+  categorias: string[];
+  originLat: number;
+  originLng: number;
+  dailyByUser: number;
+  dailyByCategory: number;
+  updatedAt: string;
+};
 
 export function RoutingPanel() {
   const [maxFetch, setMaxFetch] = useState(200);
@@ -62,6 +76,9 @@ export function RoutingPanel() {
   const [operationalUsers, setOperationalUsers] = useState<ManagedUser[]>([]);
   const [selectedOperationalUserId, setSelectedOperationalUserId] = useState<string>("");
   const [selectedCategorias, setSelectedCategorias] = useState<string[]>([]);
+  const [planName, setPlanName] = useState<string>("");
+  const [savedAreaPlans, setSavedAreaPlans] = useState<RoutingAreaPlanDraft[]>([]);
+  const [activeAreaPlanId, setActiveAreaPlanId] = useState<string>("");
 
   const humanizeReason = (reason: string): string => {
     const dictionary: Record<string, string> = {
@@ -70,45 +87,6 @@ export function RoutingPanel() {
     };
     return dictionary[reason] ?? reason;
   };
-
-  useEffect(() => {
-    const loadInitialRoutingState = async () => {
-      try {
-        const [usersResponse, rulesResponse] = await Promise.all([
-          accessControlService.getActiveUsersByRole("AGENT"),
-          routingService.getRules(),
-        ]);
-        const agentUsers = usersResponse.data;
-
-        setOperationalUsers(agentUsers);
-        setRules(rulesResponse);
-        setSelectedOperationalUserId((current) => {
-          if (current && agentUsers.some((user) => user.id === current)) {
-            return current;
-          }
-
-          const persistedAssigneeId = rulesResponse.data.crews[0]?.userId ?? rulesResponse.data.crews[0]?.crewId;
-          if (persistedAssigneeId && agentUsers.some((user) => user.id === persistedAssigneeId)) {
-            return persistedAssigneeId;
-          }
-
-          return agentUsers[0]?.id ?? "";
-        });
-        hydrateFormFromRules(rulesResponse.data, agentUsers);
-
-        if (typeof window !== "undefined") {
-          const savedPlanId = window.localStorage.getItem(LAST_ROUTING_PLAN_ID_KEY);
-          if (savedPlanId) {
-            setLastPlanId(savedPlanId);
-          }
-        }
-      } catch {
-        // Non-blocking: routing config can still work with existing persisted rules.
-      }
-    };
-
-    void loadInitialRoutingState();
-  }, []);
 
   const topStops = useMemo(() => {
     if (!simulation) return [];
@@ -132,6 +110,19 @@ export function RoutingPanel() {
 
     return simulation.routes.find((route) => route.crewId === selectedCrewId) ?? simulation.routes[0];
   }, [simulation, selectedCrewId]);
+
+  const categoryOptions = useMemo(
+    () =>
+      (rules?.data.categoryRules.length ? rules.data.categoryRules : DEFAULT_RULES.categoryRules).map(
+        (rule) => rule.categoria,
+      ),
+    [rules],
+  );
+
+  const activeAreaPlan = useMemo(
+    () => savedAreaPlans.find((plan) => plan.id === activeAreaPlanId) ?? null,
+    [activeAreaPlanId, savedAreaPlans],
+  );
 
   const mapUrl = useMemo(() => {
     if (!selectedRoute || selectedRoute.stops.length < 2) {
@@ -187,14 +178,6 @@ export function RoutingPanel() {
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(coordinateQuery)}`;
   }, [originLat, originLng]);
 
-  const categoryOptions = useMemo(
-    () =>
-      (rules?.data.categoryRules.length ? rules.data.categoryRules : DEFAULT_RULES.categoryRules).map(
-        (rule) => rule.categoria,
-      ),
-    [rules],
-  );
-
   const sanitizeZones = (zones: RoutingZoneRule[]) =>
     zones.map((zone) => ({
       id: zone.id,
@@ -204,34 +187,6 @@ export function RoutingPanel() {
       minLng: zone.minLng,
       maxLng: zone.maxLng,
     }));
-
-  const hydrateFormFromRules = (
-    source: RoutingRulesResponse["data"],
-    agentUsers: ManagedUser[] = operationalUsers,
-  ) => {
-    if (source.categoryRules.length > 0) {
-      setSelectedCategorias(source.categoryRules.map((rule) => rule.categoria));
-      setDailyByCategory(source.categoryRules[0].cupoDiario);
-    }
-
-    if (source.crews.length > 0) {
-      const firstCrew = source.crews[0];
-      setDailyByUser(firstCrew.maxReclamosDiarios);
-
-      if (typeof firstCrew.startLat === "number") {
-        setOriginLat(firstCrew.startLat);
-      }
-
-      if (typeof firstCrew.startLng === "number") {
-        setOriginLng(firstCrew.startLng);
-      }
-
-      const assigneeId = firstCrew.userId ?? firstCrew.crewId;
-      if (assigneeId && agentUsers.some((user) => user.id === assigneeId)) {
-        setSelectedOperationalUserId(assigneeId);
-      }
-    }
-  };
 
   const runAction = async (task: () => Promise<void>) => {
     setLoading(true);
@@ -247,18 +202,120 @@ export function RoutingPanel() {
     }
   };
 
+  const persistAreaPlans = (plans: RoutingAreaPlanDraft[], nextActiveId: string) => {
+    setSavedAreaPlans(plans);
+    setActiveAreaPlanId(nextActiveId);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(ROUTING_AREA_PLANS_KEY, JSON.stringify(plans));
+      if (nextActiveId) {
+        window.localStorage.setItem(ROUTING_ACTIVE_AREA_PLAN_ID_KEY, nextActiveId);
+      } else {
+        window.localStorage.removeItem(ROUTING_ACTIVE_AREA_PLAN_ID_KEY);
+      }
+    }
+  };
+
+  const hydrateStateFromAreaPlan = (plan: RoutingAreaPlanDraft) => {
+    setPlanName(plan.name);
+    setSelectedOperationalUserId(plan.userId);
+    setSelectedCategorias(plan.categorias);
+    setOriginLat(plan.originLat);
+    setOriginLng(plan.originLng);
+    setDailyByUser(plan.dailyByUser);
+    setDailyByCategory(plan.dailyByCategory);
+    setActiveAreaPlanId(plan.id);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(ROUTING_ACTIVE_AREA_PLAN_ID_KEY, plan.id);
+    }
+  };
+
+  const hydrateFormFromRules = (
+    source: RoutingRulesResponse["data"],
+    agentUsers: ManagedUser[] = operationalUsers,
+  ) => {
+    setPlanName("Plan activo persistido");
+    if (source.categoryRules.length > 0) {
+      setSelectedCategorias(source.categoryRules.map((rule) => rule.categoria));
+      setDailyByCategory(source.categoryRules[0].cupoDiario);
+    }
+
+    if (source.crews.length > 0) {
+      const firstCrew = source.crews[0];
+      setDailyByUser(firstCrew.maxReclamosDiarios);
+      if (typeof firstCrew.startLat === "number") {
+        setOriginLat(firstCrew.startLat);
+      }
+      if (typeof firstCrew.startLng === "number") {
+        setOriginLng(firstCrew.startLng);
+      }
+
+      const assigneeId = firstCrew.userId ?? firstCrew.crewId;
+      if (assigneeId && agentUsers.some((user) => user.id === assigneeId)) {
+        setSelectedOperationalUserId(assigneeId);
+      }
+    }
+  };
+
+  const buildDraftFromState = (): RoutingAreaPlanDraft => ({
+    id: activeAreaPlanId || crypto.randomUUID(),
+    name: planName.trim() || `Plan ${selectedCategorias.join(", ") || "general"}`,
+    userId: selectedOperationalUserId,
+    categorias: selectedCategorias,
+    originLat,
+    originLng,
+    dailyByUser,
+    dailyByCategory,
+    updatedAt: new Date().toISOString(),
+  });
+
+  useEffect(() => {
+    const loadInitialRoutingState = async () => {
+      try {
+        const [usersResponse, rulesResponse] = await Promise.all([
+          accessControlService.getActiveUsersByRole("AGENT"),
+          routingService.getRules(),
+        ]);
+        const agentUsers = usersResponse.data;
+        setOperationalUsers(agentUsers);
+        setRules(rulesResponse);
+        hydrateFormFromRules(rulesResponse.data, agentUsers);
+
+        if (typeof window !== "undefined") {
+          const savedPlansRaw = window.localStorage.getItem(ROUTING_AREA_PLANS_KEY);
+          const savedPlans = savedPlansRaw ? (JSON.parse(savedPlansRaw) as RoutingAreaPlanDraft[]) : [];
+          setSavedAreaPlans(savedPlans);
+
+          const activePlanId = window.localStorage.getItem(ROUTING_ACTIVE_AREA_PLAN_ID_KEY) ?? "";
+          const selectedPlan = savedPlans.find((plan) => plan.id === activePlanId);
+          if (selectedPlan) {
+            hydrateStateFromAreaPlan(selectedPlan);
+          } else if (agentUsers.length > 0) {
+            const persistedAssigneeId = rulesResponse.data.crews[0]?.userId ?? rulesResponse.data.crews[0]?.crewId;
+            setSelectedOperationalUserId(
+              persistedAssigneeId && agentUsers.some((user) => user.id === persistedAssigneeId)
+                ? persistedAssigneeId
+                : (agentUsers[0]?.id ?? ""),
+            );
+          }
+
+          const savedPlanId = window.localStorage.getItem(LAST_ROUTING_PLAN_ID_KEY);
+          if (savedPlanId) {
+            setLastPlanId(savedPlanId);
+          }
+        }
+      } catch {
+        // Non-blocking.
+      }
+    };
+
+    void loadInitialRoutingState();
+  }, []);
+
   const handleLoadRules = async () => {
     await runAction(async () => {
       const response = await routingService.getRules();
       setRules(response);
       hydrateFormFromRules(response.data);
-      setSelectedCategorias((current) =>
-        current.length > 0
-          ? current.filter((categoria) =>
-              response.data.categoryRules.some((rule) => rule.categoria === categoria),
-            )
-          : [],
-      );
       setOkMessage("Reglas de ruteo cargadas.");
     });
   };
@@ -307,16 +364,16 @@ export function RoutingPanel() {
     });
   };
 
-  const buildFastAssignmentPayload = async (): Promise<UpsertRoutingRulesPayload> => {
-    if (!Number.isFinite(originLat) || !Number.isFinite(originLng)) {
+  const buildFastAssignmentPayload = async (plan = activeAreaPlan ?? buildDraftFromState()): Promise<UpsertRoutingRulesPayload> => {
+    if (!Number.isFinite(plan.originLat) || !Number.isFinite(plan.originLng)) {
       throw new Error("Define un origen valido (lat/lng)");
     }
 
-    if (!selectedOperationalUserId) {
+    if (!plan.userId) {
       throw new Error("Selecciona un usuario AGENT para asignar la ruta.");
     }
 
-    const selectedUser = operationalUsers.find((user) => user.id === selectedOperationalUserId);
+    const selectedUser = operationalUsers.find((user) => user.id === plan.userId);
     if (!selectedUser) {
       throw new Error("El usuario AGENT seleccionado no esta disponible.");
     }
@@ -335,10 +392,10 @@ export function RoutingPanel() {
         : DEFAULT_RULES;
 
     const effectiveCategoryRules = seedSource.categoryRules
-      .filter((rule) => selectedCategorias.length === 0 || selectedCategorias.includes(rule.categoria))
+      .filter((rule) => plan.categorias.length === 0 || plan.categorias.includes(rule.categoria))
       .map((rule) => ({
         ...rule,
-        cupoDiario: dailyByCategory,
+        cupoDiario: plan.dailyByCategory,
       }));
 
     if (effectiveCategoryRules.length === 0) {
@@ -353,16 +410,48 @@ export function RoutingPanel() {
           userId: selectedUser.id,
           nombre: selectedUser.name || selectedUser.email,
           userName: selectedUser.name || selectedUser.email,
-          maxReclamosDiarios: dailyByUser,
+          maxReclamosDiarios: plan.dailyByUser,
           allowedCategorias: effectiveCategoryRules.map((rule) => rule.categoria),
-          // In the simplified flow, the selected AGENT can receive claims from any zone.
           allowedZoneIds: [],
-          startLat: originLat,
-          startLng: originLng,
+          startLat: plan.originLat,
+          startLng: plan.originLng,
         },
       ],
       zones: sanitizeZones(seedSource.zones ?? []),
     };
+  };
+
+  const handleSaveAreaPlan = async () => {
+    await runAction(async () => {
+      if (!planName.trim()) {
+        throw new Error("Asigna un nombre al plan por area.");
+      }
+
+      const draft = buildDraftFromState();
+      const nextPlans = savedAreaPlans.some((plan) => plan.id === draft.id)
+        ? savedAreaPlans.map((plan) => (plan.id === draft.id ? draft : plan))
+        : [draft, ...savedAreaPlans];
+
+      persistAreaPlans(nextPlans, draft.id);
+      hydrateStateFromAreaPlan(draft);
+      setOkMessage(`Plan por area guardado: ${draft.name}`);
+    });
+  };
+
+  const handleSelectAreaPlan = async (plan: RoutingAreaPlanDraft) => {
+    await runAction(async () => {
+      hydrateStateFromAreaPlan(plan);
+      setOkMessage(`Plan seleccionado: ${plan.name}`);
+    });
+  };
+
+  const handleDeleteAreaPlan = async (planId: string) => {
+    await runAction(async () => {
+      const nextPlans = savedAreaPlans.filter((plan) => plan.id !== planId);
+      const nextActiveId = activeAreaPlanId === planId ? "" : activeAreaPlanId;
+      persistAreaPlans(nextPlans, nextActiveId);
+      setOkMessage("Plan por area eliminado.");
+    });
   };
 
   const handleApplyBasicConfig = async () => {
@@ -371,8 +460,15 @@ export function RoutingPanel() {
       await routingService.upsertRules(payload);
       const refreshed = await routingService.getRules();
       setRules(refreshed);
-      setOkMessage("Configuracion rapida aplicada: usuario AGENT + categorias + cupos.");
+      setOkMessage("Plan activo aplicado a reglas de ruteo.");
     });
+  };
+
+  const rememberPlanId = (planId: string) => {
+    setLastPlanId(planId);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(LAST_ROUTING_PLAN_ID_KEY, planId);
+    }
   };
 
   const handleSimulate = async () => {
@@ -388,10 +484,7 @@ export function RoutingPanel() {
       setSimulation(response);
       setSelectedCrewId(response.routes?.[0]?.crewId ?? "");
       if (response.savedPlanId) {
-        setLastPlanId(response.savedPlanId);
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem(LAST_ROUTING_PLAN_ID_KEY, response.savedPlanId);
-        }
+        rememberPlanId(response.savedPlanId);
       }
       setOkMessage("Simulacion ejecutada correctamente.");
     });
@@ -401,7 +494,6 @@ export function RoutingPanel() {
     await runAction(async () => {
       const overrideRules = await buildFastAssignmentPayload();
       await routingService.upsertRules(overrideRules);
-
       const response = await routingService.generate({
         maxFetch,
         useGoogleOptimization,
@@ -412,10 +504,7 @@ export function RoutingPanel() {
       setSimulation(response);
       setSelectedCrewId(response.routes?.[0]?.crewId ?? "");
       if (response.savedPlanId) {
-        setLastPlanId(response.savedPlanId);
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem(LAST_ROUTING_PLAN_ID_KEY, response.savedPlanId);
-        }
+        rememberPlanId(response.savedPlanId);
       }
       setOkMessage(`Plan generado. ID: ${response.savedPlanId ?? "sin id"}`);
     });
@@ -437,26 +526,20 @@ export function RoutingPanel() {
     await runAction(async () => {
       const payload = await buildFastAssignmentPayload();
       await routingService.upsertRules(payload);
-
       const generated = await routingService.generate({
         maxFetch,
         useGoogleOptimization,
         originLat,
         originLng,
+        overrideRules: payload,
       });
-
       setSimulation(generated);
       setSelectedCrewId(generated.routes?.[0]?.crewId ?? "");
-
       const planId = generated.savedPlanId;
       if (!planId) {
         throw new Error("No se pudo obtener planId al generar.");
       }
-
-      setLastPlanId(planId);
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(LAST_ROUTING_PLAN_ID_KEY, planId);
-      }
+      rememberPlanId(planId);
       const confirmation = await routingService.confirmPlan(planId);
       setOkMessage(`Plan generado y confirmado. ${confirmation.message}`);
     });
@@ -467,24 +550,32 @@ export function RoutingPanel() {
       <article className={styles.card}>
         <div className={styles.head}>
           <h2>Ruteo operativo</h2>
-          <span>Asignacion rapida de rutas a un usuario AGENT</span>
+          <span>Planes por area y rutas separadas</span>
         </div>
 
         <div className={styles.formSection}>
-          <h4 className={styles.sectionTitle}>Configuracion rapida</h4>
+          <h4 className={styles.sectionTitle}>Modulo 1: Planes por area</h4>
           <p className={styles.subtle}>
-            Flujo recomendado: elige un AGENT, marca categorias, define origen y cupos, y luego genera/confirmar plan.
+            Aqui defines y guardas planes reutilizables. Luego eliges uno en el modulo de rutas para generar el recorrido.
           </p>
 
+          <div className={styles.fieldGrid}>
+            <label className={styles.field} htmlFor="plan-name">
+              <span>Nombre del plan</span>
+              <input
+                id="plan-name"
+                type="text"
+                value={planName}
+                onChange={(e) => setPlanName(e.target.value)}
+                placeholder="Ej: Plan Alumbrado Norte"
+              />
+            </label>
+          </div>
+
           <div className={styles.formSection}>
-            <h5 className={styles.sectionTitle}>Usuario AGENT para asignacion</h5>
-            <p className={styles.subtle}>
-              Solo se listan usuarios activos con rol AGENT.
-            </p>
+            <h5 className={styles.sectionTitle}>Usuario AGENT</h5>
             {operationalUsers.length === 0 ? (
-              <p className={styles.subtle}>
-                No hay usuarios activos con rol AGENT disponibles para asignacion.
-              </p>
+              <p className={styles.subtle}>No hay usuarios activos con rol AGENT disponibles.</p>
             ) : (
               <label className={styles.field} htmlFor="agent-user-id">
                 <span>Usuario operativo</span>
@@ -505,10 +596,7 @@ export function RoutingPanel() {
           </div>
 
           <div className={styles.formSection}>
-            <h5 className={styles.sectionTitle}>Areas de reclamo (categorias)</h5>
-            <p className={styles.subtle}>
-              Marca las categorias para este plan. Si no marcas ninguna, se consideran todas.
-            </p>
+            <h5 className={styles.sectionTitle}>Areas de reclamo</h5>
             <div className={styles.grid}>
               {categoryOptions.map((categoria) => {
                 const checked = selectedCategorias.includes(categoria);
@@ -549,141 +637,113 @@ export function RoutingPanel() {
             <button className={styles.buttonSecondary} type="button" onClick={handleSearchOrigin} disabled={loading}>
               Buscar origen
             </button>
-            {originFormattedAddress && (
-              <span className={styles.subtle}>Origen detectado: {originFormattedAddress}</span>
-            )}
+            {originFormattedAddress && <span className={styles.subtle}>Origen detectado: {originFormattedAddress}</span>}
           </div>
 
           <div className={styles.fieldGrid}>
             <label className={styles.field} htmlFor="origin-lat">
               <span>Punto de origen (latitud)</span>
-              <input
-                id="origin-lat"
-                type="number"
-                step="0.000001"
-                value={originLat}
-                onChange={(e) => setOriginLat(Number(e.target.value || 0))}
-                placeholder="Ej: -34.550000"
-              />
+              <input id="origin-lat" type="number" step="0.000001" value={originLat} onChange={(e) => setOriginLat(Number(e.target.value || 0))} />
             </label>
-
             <label className={styles.field} htmlFor="origin-lng">
               <span>Punto de origen (longitud)</span>
-              <input
-                id="origin-lng"
-                type="number"
-                step="0.000001"
-                value={originLng}
-                onChange={(e) => setOriginLng(Number(e.target.value || 0))}
-                placeholder="Ej: -58.450000"
-              />
+              <input id="origin-lng" type="number" step="0.000001" value={originLng} onChange={(e) => setOriginLng(Number(e.target.value || 0))} />
             </label>
-
             <label className={styles.field} htmlFor="daily-by-user">
-              <span>Reclamos diarios por usuario operativo</span>
-              <input
-                id="daily-by-user"
-                type="number"
-                min={1}
-                value={dailyByUser}
-                onChange={(e) => setDailyByUser(Number(e.target.value || 1))}
-                placeholder="Ej: 15"
-              />
+              <span>Reclamos diarios por usuario</span>
+              <input id="daily-by-user" type="number" min={1} value={dailyByUser} onChange={(e) => setDailyByUser(Number(e.target.value || 1))} />
             </label>
-
             <label className={styles.field} htmlFor="daily-by-category">
-              <span>Reclamos diarios por categoria</span>
-              <input
-                id="daily-by-category"
-                type="number"
-                min={1}
-                value={dailyByCategory}
-                onChange={(e) => setDailyByCategory(Number(e.target.value || 1))}
-                placeholder="Ej: 20"
-              />
+              <span>Reclamos diarios por area</span>
+              <input id="daily-by-category" type="number" min={1} value={dailyByCategory} onChange={(e) => setDailyByCategory(Number(e.target.value || 1))} />
             </label>
           </div>
 
           <div className={styles.actionsRow}>
-            <button className={styles.buttonSecondary} type="button" onClick={handleApplyBasicConfig} disabled={loading}>
-              Aplicar configuracion rapida
+            <button className={styles.buttonSecondary} type="button" onClick={handleSaveAreaPlan} disabled={loading}>
+              Guardar plan por area
             </button>
+            <button className={styles.buttonSecondary} type="button" onClick={handleApplyBasicConfig} disabled={loading}>
+              Aplicar plan activo
+            </button>
+            <button className={styles.buttonSecondary} type="button" onClick={handleLoadRules} disabled={loading}>
+              Recargar reglas guardadas
+            </button>
+          </div>
+
+          <div className={styles.formSection}>
+            <h5 className={styles.sectionTitle}>Planes guardados</h5>
+            {savedAreaPlans.length === 0 ? (
+              <p className={styles.subtle}>Aun no hay planes por area guardados.</p>
+            ) : (
+              <div className={styles.grid}>
+                {savedAreaPlans.map((plan) => (
+                  <div key={plan.id} className={styles.planCard} data-active={plan.id === activeAreaPlanId}>
+                    <strong>{plan.name}</strong>
+                    <span className={styles.subtle}>{plan.categorias.length > 0 ? plan.categorias.join(", ") : "Todas las categorias"}</span>
+                    <span className={styles.subtle}>Actualizado: {new Date(plan.updatedAt).toLocaleString()}</span>
+                    <div className={styles.actionsRow}>
+                      <button className={styles.buttonSecondary} type="button" onClick={() => void handleSelectAreaPlan(plan)} disabled={loading}>
+                        Seleccionar
+                      </button>
+                      <button className={styles.buttonSecondary} type="button" onClick={() => void handleDeleteAreaPlan(plan.id)} disabled={loading}>
+                        Eliminar
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className={styles.mapWrap}>
             {originMapUrl && (
-              <iframe
-                title="Mapa de punto de origen"
-                src={originMapUrl}
-                loading="lazy"
-                referrerPolicy="no-referrer-when-downgrade"
-                allowFullScreen
-              />
+              <iframe title="Mapa de punto de origen" src={originMapUrl} loading="lazy" referrerPolicy="no-referrer-when-downgrade" allowFullScreen />
             )}
           </div>
         </div>
 
         <div className={styles.formSection}>
-          <h4 className={styles.sectionTitle}>Ejecucion de ruteo</h4>
-          <p className={styles.subtle}>
-            Simula para validar y luego genera/confirmar para dejar la ruta asignada al AGENT seleccionado.
-          </p>
+          <h4 className={styles.sectionTitle}>Modulo 2: Rutas</h4>
+          <p className={styles.subtle}>Elige un plan guardado y genera la ruta usando ese plan como configuracion activa.</p>
+
+          <div className={styles.metric}>
+            <span>Plan seleccionado</span>
+            <strong>{activeAreaPlan?.name || planName || "Sin plan seleccionado"}</strong>
+          </div>
 
           <div className={styles.fieldGrid}>
             <label className={styles.field} htmlFor="max-fetch">
               <span>Maximo de reclamos a evaluar</span>
-              <input
-                id="max-fetch"
-                type="number"
-                min={50}
-                max={5000}
-                value={maxFetch}
-                onChange={(e) => setMaxFetch(Number(e.target.value || 200))}
-              />
+              <input id="max-fetch" type="number" min={50} max={5000} value={maxFetch} onChange={(e) => setMaxFetch(Number(e.target.value || 200))} />
             </label>
-
             <label className={styles.checkbox} htmlFor="google-optimize">
-              <input
-                id="google-optimize"
-                type="checkbox"
-                checked={useGoogleOptimization}
-                onChange={(e) => setUseGoogleOptimization(e.target.checked)}
-              />
+              <input id="google-optimize" type="checkbox" checked={useGoogleOptimization} onChange={(e) => setUseGoogleOptimization(e.target.checked)} />
               Usar optimizacion de Google
             </label>
           </div>
 
           <div className={styles.actionsRow}>
-            <button className={styles.buttonSecondary} type="button" onClick={handleLoadRules} disabled={loading}>
-              Ver reglas
-            </button>
             <button className={styles.buttonPrimary} type="button" onClick={handleSimulate} disabled={loading}>
-              Simular
+              Simular ruta
             </button>
             <button className={styles.buttonPrimary} type="button" onClick={handleGenerate} disabled={loading}>
-              Generar plan
+              Generar ruta
             </button>
             <button className={styles.buttonPrimary} type="button" onClick={handleGenerateAndConfirm} disabled={loading}>
-              Aplicar + generar + confirmar
+              Generar y confirmar ruta
             </button>
           </div>
         </div>
 
         <div className={styles.formSection}>
-          <h4 className={styles.sectionTitle}>Confirmacion manual (opcional)</h4>
+          <h4 className={styles.sectionTitle}>Confirmacion manual</h4>
           <div className={styles.fieldGrid}>
             <label className={styles.field} htmlFor="plan-id">
               <span>Plan ID</span>
-              <input
-                id="plan-id"
-                type="text"
-                placeholder="UUID del plan"
-                value={lastPlanId}
-                onChange={(e) => setLastPlanId(e.target.value)}
-              />
+              <input id="plan-id" type="text" placeholder="UUID del plan" value={lastPlanId} onChange={(e) => setLastPlanId(e.target.value)} />
             </label>
           </div>
-
           <div className={styles.actionsRow}>
             <button className={styles.buttonSecondary} type="button" onClick={handleConfirmPlan} disabled={loading}>
               Confirmar plan
@@ -699,13 +759,9 @@ export function RoutingPanel() {
         <article className={styles.card}>
           <div className={styles.head}>
             <h3>Reglas vigentes</h3>
-            <span>
-              {rules.data.categoryRules.length} categorias · {rules.data.crews.length} usuarios operativos · {rules.data.zones.length} zonas
-            </span>
+            <span>{rules.data.categoryRules.length} categorias · {rules.data.crews.length} usuarios operativos · {rules.data.zones.length} zonas</span>
           </div>
-          <p className={styles.subtle}>
-            Las reglas configuradas aqui se usan para decidir cupos por categoria y elegibilidad por usuario/zona.
-          </p>
+          <p className={styles.subtle}>Estas reglas siguen siendo la configuracion persistida activa en backend.</p>
         </article>
       )}
 
@@ -731,11 +787,7 @@ export function RoutingPanel() {
             </div>
             <div className={styles.metric}>
               <span>Google optimize</span>
-              <strong>
-                {simulation.summary.googleOptimization.enabled
-                  ? `${simulation.summary.googleOptimization.optimizedRoutes} optimizadas`
-                  : "desactivado"}
-              </strong>
+              <strong>{simulation.summary.googleOptimization.enabled ? `${simulation.summary.googleOptimization.optimizedRoutes} optimizadas` : "desactivado"}</strong>
             </div>
           </div>
 
@@ -774,9 +826,7 @@ export function RoutingPanel() {
           {Object.keys(simulation.summary.unassignedByReason).length > 0 && (
             <div className={styles.formSection}>
               <h4 className={styles.sectionTitle}>Diagnostico de no asignacion</h4>
-              <p className={styles.subtle}>
-                Este resumen ayuda a entender por que algunos reclamos no entraron en la ruta.
-              </p>
+              <p className={styles.subtle}>Este resumen ayuda a entender por que algunos reclamos no entraron en la ruta.</p>
               <div className={styles.grid}>
                 {Object.entries(simulation.summary.unassignedByReason).map(([reason, count]) => (
                   <div key={reason} className={styles.metric}>
@@ -785,7 +835,6 @@ export function RoutingPanel() {
                   </div>
                 ))}
               </div>
-
               <div className={styles.tableWrap}>
                 <table className={styles.table}>
                   <thead>
@@ -808,15 +857,8 @@ export function RoutingPanel() {
           )}
 
           <div className={styles.routePickerWrap}>
-            <label htmlFor="route-picker" className={styles.subtle}>
-              Ruta a visualizar
-            </label>
-            <select
-              id="route-picker"
-              className={styles.select}
-              value={selectedRoute?.crewId ?? ""}
-              onChange={(e) => setSelectedCrewId(e.target.value)}
-            >
+            <label htmlFor="route-picker" className={styles.subtle}>Ruta a visualizar</label>
+            <select id="route-picker" className={styles.select} value={selectedRoute?.crewId ?? ""} onChange={(e) => setSelectedCrewId(e.target.value)}>
               {simulation.routes.map((route) => (
                 <option key={route.crewId} value={route.crewId}>
                   {route.nombre} ({route.assignedClaims} reclamos)
@@ -848,19 +890,9 @@ export function RoutingPanel() {
 
           <div className={styles.mapWrap}>
             {!selectedRoute && <p className={styles.subtle}>No hay ruta seleccionada.</p>}
-            {selectedRoute && selectedRoute.stops.length < 2 && (
-              <p className={styles.subtle}>
-                Se necesitan al menos 2 paradas para visualizar una ruta en el mapa.
-              </p>
-            )}
+            {selectedRoute && selectedRoute.stops.length < 2 && <p className={styles.subtle}>Se necesitan al menos 2 paradas para visualizar una ruta en el mapa.</p>}
             {selectedRoute && selectedRoute.stops.length >= 2 && mapUrl && (
-              <iframe
-                title={`Mapa de ruta ${selectedRoute.nombre}`}
-                src={mapUrl}
-                loading="lazy"
-                referrerPolicy="no-referrer-when-downgrade"
-                allowFullScreen
-              />
+              <iframe title={`Mapa de ruta ${selectedRoute.nombre}`} src={mapUrl} loading="lazy" referrerPolicy="no-referrer-when-downgrade" allowFullScreen />
             )}
           </div>
         </article>

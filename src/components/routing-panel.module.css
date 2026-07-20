@@ -195,6 +195,20 @@
   font-size: 1rem;
 }
 
+.planCard {
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--card-fallback-bg);
+  display: grid;
+  gap: 6px;
+}
+
+.planCard[data-active="true"] {
+  border-color: color-mix(in srgb, var(--brand) 50%, var(--line-soft) 50%);
+  background: color-mix(in srgb, var(--bg-surface) 82%, #dff8ee 18%);
+}
+
 .tableWrap {
   overflow: auto;
   border: 1px solid var(--line-soft);
