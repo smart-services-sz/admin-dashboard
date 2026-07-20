@@ -257,6 +257,18 @@
   gap: 8px;
 }
 
+.toolbarRow {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  align-items: end;
+}
+
+.toolbarRow .field input,
+.toolbarRow .field select {
+  min-width: 0;
+}
+
 .mapWrap {
   border: 1px solid var(--line-soft);
   border-radius: 14px;
@@ -270,4 +282,50 @@
   width: 100%;
   min-height: 340px;
   display: block;
+}
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(5, 10, 18, 0.54);
+  backdrop-filter: blur(6px);
+}
+
+.modalPanel {
+  width: min(1120px, 100%);
+  max-height: 92vh;
+  overflow: auto;
+  border-radius: 20px;
+  border: 1px solid var(--line-soft);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-soft);
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.modalHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.modalBody {
+  display: grid;
+  gap: 12px;
+}
+
+@media (max-width: 768px) {
+  .card {
+    padding: 12px;
+  }
+
+  .table {
+    min-width: 880px;
+  }
 }

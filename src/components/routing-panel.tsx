@@ -45,7 +45,6 @@ const DEFAULT_RULES: UpsertRoutingRulesPayload = {
 };
 
 const LAST_ROUTING_PLAN_ID_KEY = "routing:lastPlanId";
-const ROUTING_ACTIVE_AREA_PLAN_ID_KEY = "routing:activeAreaPlanId";
 const ROUTING_CATEGORY_OPTIONS = [
   "agua_y_cloacas",
   "alumbrado",
@@ -59,7 +58,19 @@ const ROUTING_CATEGORY_OPTIONS = [
   "otros",
 ];
 
-type RoutingAreaPlanDraft = Omit<RoutingAreaPlan, "createdAt" | "updatedAt">;
+type RoutingAreaPlanDraft = {
+  id?: string;
+  name: string;
+  userId: string;
+  userName?: string | null;
+  categorias: string[];
+  originLat: number;
+  originLng: number;
+  dailyByUser: number;
+  dailyByCategory: number;
+};
+
+type RoutingModalContext = "area" | "routes";
 
 type RoutingPanelView = "plans" | "new" | "routes";
 
@@ -68,9 +79,6 @@ type RoutingPanelProps = {
 };
 
 export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
-  const isPlansView = view === "plans";
-  const isNewPlanView = view === "new";
-  const isRoutesView = view === "routes";
   const [maxFetch, setMaxFetch] = useState(200);
   const [useGoogleOptimization, setUseGoogleOptimization] = useState(true);
   const [originLat, setOriginLat] = useState(-34.55);
@@ -84,15 +92,23 @@ export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
   const [okMessage, setOkMessage] = useState<string | null>(null);
   const [rules, setRules] = useState<RoutingRulesResponse | null>(null);
   const [simulation, setSimulation] = useState<RoutingSimulationResult | null>(null);
-  const [lastPlanId, setLastPlanId] = useState<string>("");
+  const [, setLastPlanId] = useState<string>("");
   const [selectedCrewId, setSelectedCrewId] = useState<string>("");
   const [operationalUsers, setOperationalUsers] = useState<ManagedUser[]>([]);
   const [selectedOperationalUserId, setSelectedOperationalUserId] = useState<string>("");
   const [selectedCategorias, setSelectedCategorias] = useState<string[]>([]);
   const [planName, setPlanName] = useState<string>("");
   const [savedAreaPlans, setSavedAreaPlans] = useState<RoutingAreaPlan[]>([]);
-  const [activeAreaPlanId, setActiveAreaPlanId] = useState<string>("");
   const [routePlans, setRoutePlans] = useState<RoutingPlanListItem[]>([]);
+  const [planSearch, setPlanSearch] = useState<string>("");
+  const [selectedAreaFilter, setSelectedAreaFilter] = useState<string>("all");
+  const [routeSearch, setRouteSearch] = useState<string>("");
+  const [routeStatusFilter, setRouteStatusFilter] = useState<string>("all");
+  const [routeDateFrom, setRouteDateFrom] = useState<string>("");
+  const [routeDateTo, setRouteDateTo] = useState<string>("");
+  const [planDialogContext, setPlanDialogContext] = useState<RoutingModalContext | null>(null);
+  const [draftPlanId, setDraftPlanId] = useState<string>("");
+  const [routeModalPlan, setRouteModalPlan] = useState<RoutingAreaPlan | null>(null);
 
   const humanizeReason = (reason: string): string => {
     const dictionary: Record<string, string> = {
@@ -102,10 +118,46 @@ export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
     return dictionary[reason] ?? reason;
   };
 
-  const activeAreaPlan = useMemo(
-    () => savedAreaPlans.find((plan) => plan.id === activeAreaPlanId) ?? null,
-    [activeAreaPlanId, savedAreaPlans],
-  );
+  const availableAreaFilters = useMemo(() => {
+    const areas = new Set<string>();
+    for (const plan of savedAreaPlans) {
+      for (const categoria of plan.categorias) {
+        areas.add(categoria);
+      }
+    }
+    return Array.from(areas).sort();
+  }, [savedAreaPlans]);
+
+  const visibleAreaPlans = useMemo(() => {
+    const search = planSearch.trim().toLowerCase();
+    return savedAreaPlans.filter((plan) => {
+      const matchesSearch =
+        !search ||
+        plan.name.toLowerCase().includes(search) ||
+        (plan.userName ?? "").toLowerCase().includes(search);
+      const matchesArea =
+        selectedAreaFilter === "all" || plan.categorias.includes(selectedAreaFilter);
+      return matchesSearch && matchesArea;
+    });
+  }, [planSearch, savedAreaPlans, selectedAreaFilter]);
+
+  const visibleRoutePlans = useMemo(() => {
+    const search = routeSearch.trim().toLowerCase();
+    const fromTime = routeDateFrom ? new Date(`${routeDateFrom}T00:00:00.000Z`).getTime() : null;
+    const toTime = routeDateTo ? new Date(`${routeDateTo}T23:59:59.999Z`).getTime() : null;
+
+    return routePlans.filter((plan) => {
+      const matchesSearch =
+        !search ||
+        plan.id.toLowerCase().includes(search) ||
+        plan.routes.some((route) => route.nombre.toLowerCase().includes(search));
+      const matchesStatus = routeStatusFilter === "all" || plan.status === routeStatusFilter;
+      const planTime = new Date(plan.planningDate).getTime();
+      const matchesFrom = fromTime === null || planTime >= fromTime;
+      const matchesTo = toTime === null || planTime <= toTime;
+      return matchesSearch && matchesStatus && matchesFrom && matchesTo;
+    });
+  }, [routeDateFrom, routeDateTo, routePlans, routeSearch, routeStatusFilter]);
 
   const topStops = useMemo(() => {
     if (!simulation) return [];
@@ -192,7 +244,7 @@ export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
     }
   };
 
-  const hydrateStateFromAreaPlan = (plan: Pick<RoutingAreaPlan, "id" | "name" | "userId" | "categorias" | "originLat" | "originLng" | "dailyByUser" | "dailyByCategory">) => {
+  const hydrateStateFromAreaPlan = (plan: Pick<RoutingAreaPlan, "id" | "name" | "userId" | "userName" | "categorias" | "originLat" | "originLng" | "dailyByUser" | "dailyByCategory">) => {
     setPlanName(plan.name);
     setSelectedOperationalUserId(plan.userId);
     setSelectedCategorias(plan.categorias);
@@ -200,32 +252,11 @@ export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
     setOriginLng(plan.originLng);
     setDailyByUser(plan.dailyByUser);
     setDailyByCategory(plan.dailyByCategory);
-    setActiveAreaPlanId(plan.id);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(ROUTING_ACTIVE_AREA_PLAN_ID_KEY, plan.id);
-    }
-  };
-
-  const hydrateFormFromRules = (source: RoutingRulesResponse["data"], agentUsers: ManagedUser[] = operationalUsers) => {
-    setPlanName("Plan activo persistido");
-    if (source.categoryRules.length > 0) {
-      setSelectedCategorias(source.categoryRules.map((rule) => rule.categoria));
-      setDailyByCategory(source.categoryRules[0].cupoDiario);
-    }
-    if (source.crews.length > 0) {
-      const firstCrew = source.crews[0];
-      setDailyByUser(firstCrew.maxReclamosDiarios);
-      if (typeof firstCrew.startLat === "number") setOriginLat(firstCrew.startLat);
-      if (typeof firstCrew.startLng === "number") setOriginLng(firstCrew.startLng);
-      const assigneeId = firstCrew.userId ?? firstCrew.crewId;
-      if (assigneeId && agentUsers.some((user) => user.id === assigneeId)) {
-        setSelectedOperationalUserId(assigneeId);
-      }
-    }
+    setDraftPlanId(plan.id);
   };
 
   const buildDraftFromState = (): RoutingAreaPlanDraft => ({
-    id: activeAreaPlanId || crypto.randomUUID(),
+    id: draftPlanId || undefined,
     name: planName.trim() || `Plan ${selectedCategorias.join(", ") || "general"}`,
     userId: selectedOperationalUserId,
     userName: operationalUsers.find((user) => user.id === selectedOperationalUserId)?.name ?? undefined,
@@ -239,14 +270,7 @@ export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
   const loadAreaPlans = async (preferredPlanId?: string) => {
     const response = await routingService.getAreaPlans();
     setSavedAreaPlans(response.data);
-
-    const rememberedPlanId =
-      preferredPlanId ??
-      (typeof window !== "undefined" ? window.localStorage.getItem(ROUTING_ACTIVE_AREA_PLAN_ID_KEY) ?? "" : "");
-    const selectedPlan = response.data.find((plan) => plan.id === rememberedPlanId) ?? response.data[0] ?? null;
-    if (selectedPlan) {
-      hydrateStateFromAreaPlan(selectedPlan);
-    }
+    return response.data;
   };
 
   const loadRoutePlans = async () => {
@@ -314,22 +338,8 @@ export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
         setRules(rulesResponse);
         setSavedAreaPlans(areaPlansResponse.data);
         setRoutePlans(routePlansResponse.data);
-        hydrateFormFromRules(rulesResponse.data, agentUsers);
 
         if (typeof window !== "undefined") {
-          const activePlanId = window.localStorage.getItem(ROUTING_ACTIVE_AREA_PLAN_ID_KEY) ?? "";
-          const selectedPlan = areaPlansResponse.data.find((plan) => plan.id === activePlanId) ?? areaPlansResponse.data[0] ?? null;
-          if (selectedPlan) {
-            hydrateStateFromAreaPlan(selectedPlan);
-          } else if (agentUsers.length > 0) {
-            const persistedAssigneeId = rulesResponse.data.crews[0]?.userId ?? rulesResponse.data.crews[0]?.crewId;
-            setSelectedOperationalUserId(
-              persistedAssigneeId && agentUsers.some((user) => user.id === persistedAssigneeId)
-                ? persistedAssigneeId
-                : (agentUsers[0]?.id ?? ""),
-            );
-          }
-
           const savedPlanId = window.localStorage.getItem(LAST_ROUTING_PLAN_ID_KEY);
           if (savedPlanId) setLastPlanId(savedPlanId);
         }
@@ -345,9 +355,50 @@ export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
     await runAction(async () => {
       const response = await routingService.getRules();
       setRules(response);
-      hydrateFormFromRules(response.data);
       setOkMessage("Reglas de ruteo cargadas.");
     });
+  };
+
+  const openCreatePlanModal = () => {
+    setPlanDialogContext("area");
+    setDraftPlanId("");
+    setPlanName("");
+    setSelectedOperationalUserId("");
+    setSelectedCategorias([]);
+    setOriginLat(-34.55);
+    setOriginLng(-58.45);
+    setDailyByUser(15);
+    setDailyByCategory(20);
+    setRouteModalPlan(null);
+    setSimulation(null);
+    setSelectedCrewId("");
+    setError(null);
+    setOkMessage(null);
+  };
+
+  const openEditPlanModal = (plan: RoutingAreaPlan) => {
+    hydrateStateFromAreaPlan(plan);
+    setPlanDialogContext("area");
+    setRouteModalPlan(null);
+    setSimulation(null);
+    setSelectedCrewId("");
+    setError(null);
+    setOkMessage(null);
+  };
+
+  const openRoutesModal = (plan: RoutingAreaPlan) => {
+    hydrateStateFromAreaPlan(plan);
+    setPlanDialogContext("routes");
+    setRouteModalPlan(plan);
+    setSimulation(null);
+    setSelectedCrewId("");
+    setError(null);
+    setOkMessage(null);
+  };
+
+  const closeDialogs = () => {
+    setPlanDialogContext(null);
+    setRouteModalPlan(null);
   };
 
   const handleSearchOrigin = async () => {
@@ -441,8 +492,13 @@ export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
         throw new Error("Asigna un nombre al plan por area.");
       }
       const response = await routingService.saveAreaPlan(buildDraftFromState());
-      await loadAreaPlans(response.data.id);
+      await loadAreaPlans();
+      setDraftPlanId(response.data.id);
+      setRouteModalPlan(response.data);
       setOkMessage(`Plan por area guardado: ${response.data.name}`);
+      if (planDialogContext === "area") {
+        setPlanDialogContext(null);
+      }
     });
   };
 
@@ -455,20 +511,15 @@ export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
 
   const handleDeleteAreaPlan = async (planId: string) => {
     await runAction(async () => {
-      const nextActiveId = activeAreaPlanId === planId ? "" : activeAreaPlanId;
       await routingService.deleteAreaPlan(planId);
-      await loadAreaPlans(nextActiveId);
+      await loadAreaPlans();
+      if (draftPlanId === planId) {
+        setDraftPlanId("");
+      }
+      if (routeModalPlan?.id === planId) {
+        closeDialogs();
+      }
       setOkMessage("Plan por area eliminado.");
-    });
-  };
-
-  const handleApplyBasicConfig = async () => {
-    await runAction(async () => {
-      const payload = await buildFastAssignmentPayload();
-      await routingService.upsertRules(payload);
-      const refreshed = await routingService.getRules();
-      setRules(refreshed);
-      setOkMessage("Plan activo aplicado a reglas de ruteo.");
     });
   };
 
@@ -505,18 +556,6 @@ export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
       if (response.savedPlanId) rememberPlanId(response.savedPlanId);
       await loadRoutePlans();
       setOkMessage(`Plan generado. ID: ${response.savedPlanId ?? "sin id"}`);
-    });
-  };
-
-  const handleConfirmPlan = async () => {
-    if (!lastPlanId.trim()) {
-      setError("Ingresa un planId o genera un plan primero.");
-      return;
-    }
-
-    await runAction(async () => {
-      const result = await routingService.confirmPlan(lastPlanId.trim());
-      setOkMessage(result.message || "Plan confirmado.");
     });
   };
 
@@ -557,200 +596,143 @@ export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
       <article className={styles.card}>
         <div className={styles.head}>
           <h2>Ruteo operativo</h2>
-          <span>
-            {isPlansView
-              ? "Planes por area"
-              : isNewPlanView
-                ? "Crear un nuevo plan"
-                : "Rutas y asignaciones"}
-          </span>
+          <span>{view === "plans" ? "Listado de planes por area" : "Historial de rutas"}</span>
         </div>
 
-        {!isRoutesView && (
-        <div className={styles.formSection}>
-          <h4 className={styles.sectionTitle}>Modulo 1: Planes por area</h4>
-          <p className={styles.subtle}>
-            Aqui defines y guardas planes reutilizables en backend. Luego eliges uno en el modulo de rutas para generar el recorrido.
-          </p>
+        {view === "plans" ? (
+          <>
+            <div className={styles.toolbarRow}>
+              <label className={styles.field} htmlFor="plan-search">
+                <span>Buscar plan</span>
+                <input
+                  id="plan-search"
+                  type="text"
+                  value={planSearch}
+                  onChange={(e) => setPlanSearch(e.target.value)}
+                  placeholder="Nombre del plan o usuario"
+                />
+              </label>
 
-          <div className={styles.fieldGrid}>
-            <label className={styles.field} htmlFor="plan-name">
-              <span>Nombre del plan</span>
-              <input id="plan-name" type="text" value={planName} onChange={(e) => setPlanName(e.target.value)} placeholder="Ej: Plan Alumbrado Norte" />
-            </label>
-          </div>
-
-          <div className={styles.formSection}>
-            <h5 className={styles.sectionTitle}>Usuario AGENT</h5>
-            {operationalUsers.length === 0 ? (
-              <p className={styles.subtle}>No hay usuarios activos con rol AGENT disponibles.</p>
-            ) : (
-              <label className={styles.field} htmlFor="agent-user-id">
-                <span>Usuario operativo</span>
-                <select id="agent-user-id" className={styles.select} value={selectedOperationalUserId} onChange={(e) => setSelectedOperationalUserId(e.target.value)}>
-                  {operationalUsers.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.name || user.email}
+              <label className={styles.field} htmlFor="area-filter">
+                <span>Filtrar por area</span>
+                <select id="area-filter" className={styles.select} value={selectedAreaFilter} onChange={(e) => setSelectedAreaFilter(e.target.value)}>
+                  <option value="all">Todas</option>
+                  {availableAreaFilters.map((area) => (
+                    <option key={area} value={area}>
+                      {area}
                     </option>
                   ))}
                 </select>
               </label>
-            )}
-          </div>
 
-          <div className={styles.formSection}>
-            <h5 className={styles.sectionTitle}>Areas de reclamo</h5>
-            <div className={styles.grid}>
-              {categoryOptions.map((categoria) => {
-                const checked = selectedCategorias.includes(categoria);
-                return (
-                  <label key={categoria} className={styles.checkbox}>
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(e) => {
-                        setSelectedCategorias((current) =>
-                          e.target.checked ? [...current, categoria] : current.filter((item) => item !== categoria),
-                        );
-                      }}
-                    />
-                    <span>{categoria}</span>
-                  </label>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className={styles.fieldGrid}>
-            <label className={styles.field} htmlFor="origin-query">
-              <span>Buscar punto de origen por direccion</span>
-              <input id="origin-query" type="text" value={originQuery} onChange={(e) => setOriginQuery(e.target.value)} placeholder="Ej: Av. Corrientes 1000, Buenos Aires" />
-            </label>
-          </div>
-
-          <div className={styles.actionsRow}>
-            <button className={styles.buttonSecondary} type="button" onClick={handleSearchOrigin} disabled={loading}>
-              Buscar origen
-            </button>
-            {originFormattedAddress && <span className={styles.subtle}>Origen detectado: {originFormattedAddress}</span>}
-          </div>
-
-          <div className={styles.fieldGrid}>
-            <label className={styles.field} htmlFor="origin-lat">
-              <span>Punto de origen (latitud)</span>
-              <input id="origin-lat" type="number" step="0.000001" value={originLat} onChange={(e) => setOriginLat(Number(e.target.value || 0))} />
-            </label>
-            <label className={styles.field} htmlFor="origin-lng">
-              <span>Punto de origen (longitud)</span>
-              <input id="origin-lng" type="number" step="0.000001" value={originLng} onChange={(e) => setOriginLng(Number(e.target.value || 0))} />
-            </label>
-            <label className={styles.field} htmlFor="daily-by-user">
-              <span>Reclamos diarios por usuario</span>
-              <input id="daily-by-user" type="number" min={1} value={dailyByUser} onChange={(e) => setDailyByUser(Number(e.target.value || 1))} />
-            </label>
-            <label className={styles.field} htmlFor="daily-by-category">
-              <span>Reclamos diarios por area</span>
-              <input id="daily-by-category" type="number" min={1} value={dailyByCategory} onChange={(e) => setDailyByCategory(Number(e.target.value || 1))} />
-            </label>
-          </div>
-
-          <div className={styles.actionsRow}>
-            <button className={styles.buttonSecondary} type="button" onClick={handleSaveAreaPlan} disabled={loading}>
-              Guardar plan por area
-            </button>
-            <button className={styles.buttonSecondary} type="button" onClick={handleApplyBasicConfig} disabled={loading}>
-              Aplicar plan activo
-            </button>
-            <button className={styles.buttonSecondary} type="button" onClick={handleLoadRules} disabled={loading}>
-              Recargar reglas guardadas
-            </button>
-          </div>
-
-          {isPlansView && (
-          <div className={styles.formSection}>
-            <h5 className={styles.sectionTitle}>Planes guardados</h5>
-            {savedAreaPlans.length === 0 ? (
-              <p className={styles.subtle}>Aun no hay planes por area guardados.</p>
-            ) : (
-              <div className={styles.grid}>
-                {savedAreaPlans.map((plan) => (
-                  <div key={plan.id} className={styles.planCard} data-active={plan.id === activeAreaPlanId}>
-                    <strong>{plan.name}</strong>
-                    <span className={styles.subtle}>{plan.categorias.length > 0 ? plan.categorias.join(", ") : "Todas las categorias"}</span>
-                    <span className={styles.subtle}>Actualizado: {new Date(plan.updatedAt).toLocaleString()}</span>
-                    <div className={styles.actionsRow}>
-                      <button className={styles.buttonSecondary} type="button" onClick={() => void handleSelectAreaPlan(plan)} disabled={loading}>
-                        Seleccionar
-                      </button>
-                      <button className={styles.buttonSecondary} type="button" onClick={() => void handleDeleteAreaPlan(plan.id)} disabled={loading}>
-                        Eliminar
-                      </button>
-                    </div>
-                  </div>
-                ))}
+              <div className={styles.actionsRow}>
+                <button className={styles.buttonPrimary} type="button" onClick={openCreatePlanModal} disabled={loading}>
+                  Nueva area
+                </button>
               </div>
-            )}
-          </div>
-          )}
+            </div>
 
-          <div className={styles.mapWrap}>
-            {originMapUrl && <iframe title="Mapa de punto de origen" src={originMapUrl} loading="lazy" referrerPolicy="no-referrer-when-downgrade" allowFullScreen />}
-          </div>
-        </div>
-        )}
-
-        {isRoutesView && (
-        <div className={styles.formSection}>
-          <h4 className={styles.sectionTitle}>Modulo 2: Rutas</h4>
-          <p className={styles.subtle}>Elige un plan guardado y genera la ruta usando ese plan como configuracion activa.</p>
-
-          <div className={styles.metric}>
-            <span>Plan seleccionado</span>
-            <strong>{activeAreaPlan?.name || planName || "Sin plan seleccionado"}</strong>
-          </div>
-
-          <div className={styles.fieldGrid}>
-            <label className={styles.field} htmlFor="max-fetch">
-              <span>Maximo de reclamos a evaluar</span>
-              <input id="max-fetch" type="number" min={50} max={5000} value={maxFetch} onChange={(e) => setMaxFetch(Number(e.target.value || 200))} />
-            </label>
-            <label className={styles.checkbox} htmlFor="google-optimize">
-              <input id="google-optimize" type="checkbox" checked={useGoogleOptimization} onChange={(e) => setUseGoogleOptimization(e.target.checked)} />
-              Usar optimizacion de Google
-            </label>
-          </div>
-
-          <div className={styles.actionsRow}>
-            <button className={styles.buttonPrimary} type="button" onClick={handleSimulate} disabled={loading}>
-              Simular ruta
-            </button>
-            <button className={styles.buttonPrimary} type="button" onClick={handleGenerate} disabled={loading}>
-              Generar ruta
-            </button>
-            <button className={styles.buttonPrimary} type="button" onClick={handleGenerateAndConfirm} disabled={loading}>
-              Generar y confirmar ruta
-            </button>
-          </div>
-
-          <div className={styles.formSection}>
-            <h5 className={styles.sectionTitle}>Historial de rutas generadas</h5>
-            {routePlans.length === 0 ? (
-              <p className={styles.subtle}>Todavia no hay planes de ruta persistidos.</p>
-            ) : (
-              <div className={styles.tableWrap}>
-                <table className={styles.table}>
-                  <thead>
+            <div className={styles.tableWrap}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Plan</th>
+                    <th>Areas</th>
+                    <th>Usuario</th>
+                    <th>Origen</th>
+                    <th>Actualizado</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleAreaPlans.length === 0 ? (
                     <tr>
-                      <th>Fecha plan</th>
-                      <th>Estado</th>
-                      <th>Asignados</th>
-                      <th>No asignados</th>
-                      <th>Rutas</th>
-                      <th>Acciones</th>
+                      <td colSpan={6}>No hay planes para los filtros seleccionados.</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {routePlans.map((plan) => (
+                  ) : (
+                    visibleAreaPlans.map((plan) => (
+                      <tr key={plan.id}>
+                        <td>{plan.name}</td>
+                        <td>{plan.categorias.length > 0 ? plan.categorias.join(", ") : "Todas"}</td>
+                        <td>{plan.userName || plan.userId}</td>
+                        <td>{plan.originLat.toFixed(4)}, {plan.originLng.toFixed(4)}</td>
+                        <td>{new Date(plan.updatedAt).toLocaleString()}</td>
+                        <td>
+                          <div className={styles.actionsRow}>
+                            <button className={styles.buttonSecondary} type="button" onClick={() => openEditPlanModal(plan)} disabled={loading}>
+                              Editar
+                            </button>
+                            <button className={styles.buttonSecondary} type="button" onClick={() => openRoutesModal(plan)} disabled={loading}>
+                              Abrir rutas
+                            </button>
+                            <button className={styles.buttonSecondary} type="button" onClick={() => void handleDeleteAreaPlan(plan.id)} disabled={loading}>
+                              Eliminar
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className={styles.subtle}>Desde esta vista puedes revisar los planes de ruta ya generados. Para abrir el módulo de rutas de un plan, vuelve a la tabla de planes y usa el botón Abrir rutas.</p>
+
+            <div className={styles.toolbarRow}>
+              <label className={styles.field} htmlFor="route-search">
+                <span>Buscar ruta</span>
+                <input
+                  id="route-search"
+                  type="text"
+                  value={routeSearch}
+                  onChange={(e) => setRouteSearch(e.target.value)}
+                  placeholder="ID de plan o nombre de ruta"
+                />
+              </label>
+
+              <label className={styles.field} htmlFor="route-status-filter">
+                <span>Estado</span>
+                <select id="route-status-filter" className={styles.select} value={routeStatusFilter} onChange={(e) => setRouteStatusFilter(e.target.value)}>
+                  <option value="all">Todos</option>
+                  <option value="proposed">Propuesto</option>
+                  <option value="confirmed">Confirmado</option>
+                  <option value="cancelled">Cancelado</option>
+                </select>
+              </label>
+
+              <label className={styles.field} htmlFor="route-date-from">
+                <span>Desde</span>
+                <input id="route-date-from" type="date" value={routeDateFrom} onChange={(e) => setRouteDateFrom(e.target.value)} />
+              </label>
+
+              <label className={styles.field} htmlFor="route-date-to">
+                <span>Hasta</span>
+                <input id="route-date-to" type="date" value={routeDateTo} onChange={(e) => setRouteDateTo(e.target.value)} />
+              </label>
+            </div>
+
+            <div className={styles.tableWrap}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Fecha plan</th>
+                    <th>Estado</th>
+                    <th>Asignados</th>
+                    <th>No asignados</th>
+                    <th>Rutas</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleRoutePlans.length === 0 ? (
+                    <tr>
+                      <td colSpan={6}>No hay planes de ruta para los filtros seleccionados.</td>
+                    </tr>
+                  ) : (
+                    visibleRoutePlans.map((plan) => (
                       <tr key={plan.id}>
                         <td>{new Date(plan.planningDate).toLocaleDateString()}</td>
                         <td>{plan.status}</td>
@@ -768,176 +750,493 @@ export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
                           </div>
                         </td>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </div>
-        )}
-
-        {isRoutesView && (
-        <div className={styles.formSection}>
-          <h4 className={styles.sectionTitle}>Confirmacion manual</h4>
-          <div className={styles.fieldGrid}>
-            <label className={styles.field} htmlFor="plan-id">
-              <span>Plan ID</span>
-              <input id="plan-id" type="text" placeholder="UUID del plan" value={lastPlanId} onChange={(e) => setLastPlanId(e.target.value)} />
-            </label>
-          </div>
-          <div className={styles.actionsRow}>
-            <button className={styles.buttonSecondary} type="button" onClick={handleConfirmPlan} disabled={loading}>
-              Confirmar plan
-            </button>
-          </div>
-        </div>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
 
         {okMessage && <div className={styles.statusOk}>{okMessage}</div>}
         {error && <div className={styles.statusError}>{error}</div>}
       </article>
 
-      {rules && (
+      {routeModalPlan && view === "plans" && (
         <article className={styles.card}>
           <div className={styles.head}>
-            <h3>Reglas vigentes</h3>
-            <span>{rules.data.categoryRules.length} categorias · {rules.data.crews.length} usuarios operativos · {rules.data.zones.length} zonas</span>
-          </div>
-          <p className={styles.subtle}>Estas reglas siguen siendo la configuracion persistida activa en backend.</p>
-        </article>
-      )}
-
-      {isRoutesView && simulation && (
-        <article className={styles.card}>
-          <div className={styles.head}>
-            <h3>Resultado de ruteo</h3>
-            <span>{simulation.planningDate}</span>
+            <div>
+              <h3>Modulo de rutas</h3>
+              <span>{routeModalPlan.name}</span>
+            </div>
+            <button className={styles.buttonSecondary} type="button" onClick={() => setRouteModalPlan(null)}>
+              Cerrar
+            </button>
           </div>
 
           <div className={styles.grid}>
             <div className={styles.metric}>
-              <span>Reclamos leidos</span>
-              <strong>{simulation.summary.totalFetched}</strong>
+              <span>Areas</span>
+              <strong>{routeModalPlan.categorias.length > 0 ? routeModalPlan.categorias.join(", ") : "Todas"}</strong>
             </div>
             <div className={styles.metric}>
-              <span>Asignados</span>
-              <strong>{simulation.summary.totalAssigned}</strong>
+              <span>Usuario</span>
+              <strong>{routeModalPlan.userName || routeModalPlan.userId}</strong>
             </div>
             <div className={styles.metric}>
-              <span>No asignados</span>
-              <strong>{simulation.summary.totalUnassigned}</strong>
+              <span>Origen</span>
+              <strong>{routeModalPlan.originLat.toFixed(4)}, {routeModalPlan.originLng.toFixed(4)}</strong>
             </div>
             <div className={styles.metric}>
-              <span>Google optimize</span>
-              <strong>{simulation.summary.googleOptimization.enabled ? `${simulation.summary.googleOptimization.optimizedRoutes} optimizadas` : "desactivado"}</strong>
+              <span>Límite diario</span>
+              <strong>{routeModalPlan.dailyByUser} / {routeModalPlan.dailyByCategory}</strong>
             </div>
           </div>
 
-          <div className={styles.tableWrap}>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>Usuario operativo</th>
-                  <th>Sec.</th>
-                  <th>Reclamo</th>
-                  <th>Categoria</th>
-                  <th>Dist. tramo (km)</th>
-                  <th>Dur. tramo (min)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {topStops.length === 0 && (
-                  <tr>
-                    <td colSpan={6}>No hay paradas en la simulacion.</td>
-                  </tr>
-                )}
-                {topStops.map((stop) => (
-                  <tr key={`${stop.crewId}-${stop.reclamoId}-${stop.sequence}`}>
-                    <td>{stop.crewName}</td>
-                    <td>{stop.sequence}</td>
-                    <td>{stop.reclamoId}</td>
-                    <td>{stop.categoria}</td>
-                    <td>{stop.distanceFromPreviousKm}</td>
-                    <td>{stop.durationFromPreviousMin}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <div className={styles.formSection}>
+            <h4 className={styles.sectionTitle}>Configuracion del plan</h4>
+            <div className={styles.fieldGrid}>
+              <label className={styles.field} htmlFor="plan-name">
+                <span>Nombre del plan</span>
+                <input id="plan-name" type="text" value={planName} onChange={(e) => setPlanName(e.target.value)} placeholder="Ej: Plan Alumbrado Norte" />
+              </label>
+              <label className={styles.field} htmlFor="agent-user-id">
+                <span>Usuario operativo</span>
+                <select id="agent-user-id" className={styles.select} value={selectedOperationalUserId} onChange={(e) => setSelectedOperationalUserId(e.target.value)}>
+                  <option value="">Seleccionar</option>
+                  {operationalUsers.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.name || user.email}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
 
-          {Object.keys(simulation.summary.unassignedByReason).length > 0 && (
+            <div className={styles.fieldGrid}>
+              <label className={styles.field} htmlFor="origin-lat">
+                <span>Punto de origen (latitud)</span>
+                <input id="origin-lat" type="number" step="0.000001" value={originLat} onChange={(e) => setOriginLat(Number(e.target.value || 0))} />
+              </label>
+              <label className={styles.field} htmlFor="origin-lng">
+                <span>Punto de origen (longitud)</span>
+                <input id="origin-lng" type="number" step="0.000001" value={originLng} onChange={(e) => setOriginLng(Number(e.target.value || 0))} />
+              </label>
+              <label className={styles.field} htmlFor="daily-by-user">
+                <span>Reclamos diarios por usuario</span>
+                <input id="daily-by-user" type="number" min={1} value={dailyByUser} onChange={(e) => setDailyByUser(Number(e.target.value || 1))} />
+              </label>
+              <label className={styles.field} htmlFor="daily-by-category">
+                <span>Reclamos diarios por area</span>
+                <input id="daily-by-category" type="number" min={1} value={dailyByCategory} onChange={(e) => setDailyByCategory(Number(e.target.value || 1))} />
+              </label>
+            </div>
+
             <div className={styles.formSection}>
-              <h4 className={styles.sectionTitle}>Diagnostico de no asignacion</h4>
-              <p className={styles.subtle}>Este resumen ayuda a entender por que algunos reclamos no entraron en la ruta.</p>
+              <h5 className={styles.sectionTitle}>Areas de reclamo</h5>
               <div className={styles.grid}>
-                {Object.entries(simulation.summary.unassignedByReason).map(([reason, count]) => (
-                  <div key={reason} className={styles.metric}>
-                    <span>{humanizeReason(reason)}</span>
-                    <strong>{count}</strong>
-                  </div>
-                ))}
+                {categoryOptions.map((categoria) => {
+                  const checked = selectedCategorias.includes(categoria);
+                  return (
+                    <label key={categoria} className={styles.checkbox}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          setSelectedCategorias((current) =>
+                            e.target.checked ? [...current, categoria] : current.filter((item) => item !== categoria),
+                          );
+                        }}
+                      />
+                      <span>{categoria}</span>
+                    </label>
+                  );
+                })}
               </div>
+            </div>
+
+            <div className={styles.actionsRow}>
+              <button className={styles.buttonSecondary} type="button" onClick={handleSearchOrigin} disabled={loading}>
+                Buscar origen
+              </button>
+              <button className={styles.buttonSecondary} type="button" onClick={handleSaveAreaPlan} disabled={loading}>
+                Guardar cambios
+              </button>
+              <button className={styles.buttonSecondary} type="button" onClick={handleLoadRules} disabled={loading}>
+                Recargar reglas
+              </button>
+            </div>
+          </div>
+
+          <div className={styles.formSection}>
+            <h4 className={styles.sectionTitle}>Generacion de rutas</h4>
+            <div className={styles.fieldGrid}>
+              <label className={styles.field} htmlFor="max-fetch">
+                <span>Maximo de reclamos a evaluar</span>
+                <input id="max-fetch" type="number" min={50} max={5000} value={maxFetch} onChange={(e) => setMaxFetch(Number(e.target.value || 200))} />
+              </label>
+              <label className={styles.checkbox} htmlFor="google-optimize">
+                <input id="google-optimize" type="checkbox" checked={useGoogleOptimization} onChange={(e) => setUseGoogleOptimization(e.target.checked)} />
+                Usar optimizacion de Google
+              </label>
+            </div>
+
+            <div className={styles.actionsRow}>
+              <button className={styles.buttonPrimary} type="button" onClick={handleSimulate} disabled={loading}>
+                Simular ruta
+              </button>
+              <button className={styles.buttonPrimary} type="button" onClick={handleGenerate} disabled={loading}>
+                Generar ruta
+              </button>
+              <button className={styles.buttonPrimary} type="button" onClick={handleGenerateAndConfirm} disabled={loading}>
+                Generar y confirmar ruta
+              </button>
+            </div>
+          </div>
+
+          {simulation && (
+            <div className={styles.formSection}>
+              <h4 className={styles.sectionTitle}>Resultado de ruteo</h4>
+              <div className={styles.grid}>
+                <div className={styles.metric}><span>Reclamos leidos</span><strong>{simulation.summary.totalFetched}</strong></div>
+                <div className={styles.metric}><span>Asignados</span><strong>{simulation.summary.totalAssigned}</strong></div>
+                <div className={styles.metric}><span>No asignados</span><strong>{simulation.summary.totalUnassigned}</strong></div>
+                <div className={styles.metric}><span>Google optimize</span><strong>{simulation.summary.googleOptimization.enabled ? `${simulation.summary.googleOptimization.optimizedRoutes} optimizadas` : "desactivado"}</strong></div>
+              </div>
+
+              {Object.keys(simulation.summary.unassignedByReason).length > 0 && (
+                <div className={styles.formSection}>
+                  <h5 className={styles.sectionTitle}>Diagnostico de no asignacion</h5>
+                  <div className={styles.grid}>
+                    {Object.entries(simulation.summary.unassignedByReason).map(([reason, count]) => (
+                      <div key={reason} className={styles.metric}>
+                        <span>{humanizeReason(reason)}</span>
+                        <strong>{count}</strong>
+                      </div>
+                    ))}
+                  </div>
+                  <div className={styles.tableWrap}>
+                    <table className={styles.table}>
+                      <thead>
+                        <tr>
+                          <th>Reclamo</th>
+                          <th>Motivo</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {simulation.unassigned.map((item) => (
+                          <tr key={`${item.reclamoId}-${item.reason}`}>
+                            <td>{item.reclamoId}</td>
+                            <td>{humanizeReason(item.reason)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              <div className={styles.routePickerWrap}>
+                <label htmlFor="route-picker" className={styles.subtle}>Ruta a visualizar</label>
+                <select id="route-picker" className={styles.select} value={selectedRoute?.crewId ?? ""} onChange={(e) => setSelectedCrewId(e.target.value)}>
+                  {simulation.routes.map((route) => (
+                    <option key={route.crewId} value={route.crewId}>
+                      {route.nombre} ({route.assignedClaims} reclamos)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedRoute && (
+                <div className={styles.grid}>
+                  <div className={styles.metric}><span>Usuario operativo</span><strong>{selectedRoute.nombre || selectedRoute.crewId}</strong></div>
+                  <div className={styles.metric}><span>Paradas</span><strong>{selectedRoute.assignedClaims}</strong></div>
+                  <div className={styles.metric}><span>Distancia total (km)</span><strong>{selectedRoute.totalDistanceKm}</strong></div>
+                  <div className={styles.metric}><span>Duracion total (min)</span><strong>{selectedRoute.totalDurationMin}</strong></div>
+                </div>
+              )}
 
               <div className={styles.tableWrap}>
                 <table className={styles.table}>
                   <thead>
                     <tr>
+                      <th>Usuario operativo</th>
+                      <th>Sec.</th>
                       <th>Reclamo</th>
-                      <th>Motivo</th>
+                      <th>Categoria</th>
+                      <th>Dist. tramo (km)</th>
+                      <th>Dur. tramo (min)</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {simulation.unassigned.map((item) => (
-                      <tr key={`${item.reclamoId}-${item.reason}`}>
-                        <td>{item.reclamoId}</td>
-                        <td>{humanizeReason(item.reason)}</td>
-                      </tr>
-                    ))}
+                    {topStops.length === 0 ? (
+                      <tr><td colSpan={6}>No hay paradas en la simulacion.</td></tr>
+                    ) : (
+                      topStops.map((stop) => (
+                        <tr key={`${stop.crewId}-${stop.reclamoId}-${stop.sequence}`}>
+                          <td>{stop.crewName}</td>
+                          <td>{stop.sequence}</td>
+                          <td>{stop.reclamoId}</td>
+                          <td>{stop.categoria}</td>
+                          <td>{stop.distanceFromPreviousKm}</td>
+                          <td>{stop.durationFromPreviousMin}</td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
+
+              <div className={styles.mapWrap}>
+                {!selectedRoute && <p className={styles.subtle}>No hay ruta seleccionada.</p>}
+                {selectedRoute && selectedRoute.stops.length < 2 && <p className={styles.subtle}>Se necesitan al menos 2 paradas para visualizar una ruta en el mapa.</p>}
+                {selectedRoute && selectedRoute.stops.length >= 2 && mapUrl && (
+                  <iframe title={`Mapa de ruta ${selectedRoute.nombre}`} src={mapUrl} loading="lazy" referrerPolicy="no-referrer-when-downgrade" allowFullScreen />
+                )}
+              </div>
             </div>
           )}
+        </article>
+      )}
 
-          <div className={styles.routePickerWrap}>
-            <label htmlFor="route-picker" className={styles.subtle}>Ruta a visualizar</label>
-            <select id="route-picker" className={styles.select} value={selectedRoute?.crewId ?? ""} onChange={(e) => setSelectedCrewId(e.target.value)}>
-              {simulation.routes.map((route) => (
-                <option key={route.crewId} value={route.crewId}>
-                  {route.nombre} ({route.assignedClaims} reclamos)
-                </option>
-              ))}
-            </select>
+      {planDialogContext === "area" && (
+        <div className={styles.modalBackdrop} role="presentation" onClick={closeDialogs}>
+          <div className={styles.modalPanel} role="dialog" aria-modal="true" aria-labelledby="area-plan-modal-title" onClick={(event) => event.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <div>
+                <h3 id="area-plan-modal-title">{draftPlanId ? "Editar area" : "Nueva area"}</h3>
+                <p className={styles.subtle}>Crea o ajusta el plan de area antes de abrir el módulo de rutas.</p>
+              </div>
+              <button className={styles.buttonSecondary} type="button" onClick={closeDialogs}>
+                Cerrar
+              </button>
+            </div>
+            <div className={styles.modalBody}>
+              <div className={styles.fieldGrid}>
+                <label className={styles.field} htmlFor="modal-plan-name">
+                  <span>Nombre del plan</span>
+                  <input id="modal-plan-name" type="text" value={planName} onChange={(e) => setPlanName(e.target.value)} placeholder="Ej: Plan Alumbrado Norte" />
+                </label>
+                <label className={styles.field} htmlFor="modal-agent-user-id">
+                  <span>Usuario operativo</span>
+                  <select id="modal-agent-user-id" className={styles.select} value={selectedOperationalUserId} onChange={(e) => setSelectedOperationalUserId(e.target.value)}>
+                    <option value="">Seleccionar</option>
+                    {operationalUsers.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.name || user.email}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className={styles.field} htmlFor="modal-origin-lat">
+                  <span>Punto de origen (latitud)</span>
+                  <input id="modal-origin-lat" type="number" step="0.000001" value={originLat} onChange={(e) => setOriginLat(Number(e.target.value || 0))} />
+                </label>
+                <label className={styles.field} htmlFor="modal-origin-lng">
+                  <span>Punto de origen (longitud)</span>
+                  <input id="modal-origin-lng" type="number" step="0.000001" value={originLng} onChange={(e) => setOriginLng(Number(e.target.value || 0))} />
+                </label>
+                <label className={styles.field} htmlFor="modal-daily-by-user">
+                  <span>Reclamos diarios por usuario</span>
+                  <input id="modal-daily-by-user" type="number" min={1} value={dailyByUser} onChange={(e) => setDailyByUser(Number(e.target.value || 1))} />
+                </label>
+                <label className={styles.field} htmlFor="modal-daily-by-category">
+                  <span>Reclamos diarios por area</span>
+                  <input id="modal-daily-by-category" type="number" min={1} value={dailyByCategory} onChange={(e) => setDailyByCategory(Number(e.target.value || 1))} />
+                </label>
+              </div>
+
+              <div className={styles.formSection}>
+                <h5 className={styles.sectionTitle}>Areas de reclamo</h5>
+                <div className={styles.grid}>
+                  {categoryOptions.map((categoria) => {
+                    const checked = selectedCategorias.includes(categoria);
+                    return (
+                      <label key={categoria} className={styles.checkbox}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            setSelectedCategorias((current) =>
+                              e.target.checked ? [...current, categoria] : current.filter((item) => item !== categoria),
+                            );
+                          }}
+                        />
+                        <span>{categoria}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className={styles.actionsRow}>
+                <button className={styles.buttonSecondary} type="button" onClick={handleSearchOrigin} disabled={loading}>
+                  Buscar origen
+                </button>
+                <button className={styles.buttonPrimary} type="button" onClick={handleSaveAreaPlan} disabled={loading}>
+                  Guardar area
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {routeModalPlan && view === "plans" && (
+        <article className={styles.card}>
+          <div className={styles.head}>
+            <div>
+              <h3>Modulo de rutas</h3>
+              <span>{routeModalPlan.name}</span>
+            </div>
+            <button className={styles.buttonSecondary} type="button" onClick={() => setRouteModalPlan(null)}>
+              Cerrar modulo
+            </button>
           </div>
 
-          {selectedRoute && (
-            <div className={styles.grid}>
-              <div className={styles.metric}>
-                <span>Usuario operativo</span>
-                <strong>{selectedRoute.nombre || selectedRoute.crewId}</strong>
+          <div className={styles.grid}>
+            <div className={styles.metric}>
+              <span>Areas</span>
+              <strong>{routeModalPlan.categorias.length > 0 ? routeModalPlan.categorias.join(", ") : "Todas"}</strong>
+            </div>
+            <div className={styles.metric}>
+              <span>Usuario</span>
+              <strong>{routeModalPlan.userName || routeModalPlan.userId}</strong>
+            </div>
+            <div className={styles.metric}>
+              <span>Origen</span>
+              <strong>{routeModalPlan.originLat.toFixed(4)}, {routeModalPlan.originLng.toFixed(4)}</strong>
+            </div>
+            <div className={styles.metric}>
+              <span>Limite diario</span>
+              <strong>{routeModalPlan.dailyByUser} / {routeModalPlan.dailyByCategory}</strong>
+            </div>
+          </div>
+
+          <div className={styles.actionsRow}>
+            <button className={styles.buttonPrimary} type="button" onClick={handleSimulate} disabled={loading}>
+              Simular ruta
+            </button>
+            <button className={styles.buttonPrimary} type="button" onClick={handleGenerate} disabled={loading}>
+              Generar ruta
+            </button>
+            <button className={styles.buttonPrimary} type="button" onClick={handleGenerateAndConfirm} disabled={loading}>
+              Generar y confirmar ruta
+            </button>
+          </div>
+
+          <p className={styles.subtle}>Si necesitas cambiar el nombre, usuario, areas o limites, usa el boton Editar en la tabla.</p>
+
+          {simulation && (
+            <div className={styles.formSection}>
+              <h4 className={styles.sectionTitle}>Resultado de ruteo</h4>
+              <div className={styles.grid}>
+                <div className={styles.metric}><span>Reclamos leidos</span><strong>{simulation.summary.totalFetched}</strong></div>
+                <div className={styles.metric}><span>Asignados</span><strong>{simulation.summary.totalAssigned}</strong></div>
+                <div className={styles.metric}><span>No asignados</span><strong>{simulation.summary.totalUnassigned}</strong></div>
+                <div className={styles.metric}><span>Google optimize</span><strong>{simulation.summary.googleOptimization.enabled ? `${simulation.summary.googleOptimization.optimizedRoutes} optimizadas` : "desactivado"}</strong></div>
               </div>
-              <div className={styles.metric}>
-                <span>Paradas</span>
-                <strong>{selectedRoute.assignedClaims}</strong>
+
+              {Object.keys(simulation.summary.unassignedByReason).length > 0 && (
+                <div className={styles.formSection}>
+                  <h5 className={styles.sectionTitle}>Diagnostico de no asignacion</h5>
+                  <div className={styles.grid}>
+                    {Object.entries(simulation.summary.unassignedByReason).map(([reason, count]) => (
+                      <div key={reason} className={styles.metric}>
+                        <span>{humanizeReason(reason)}</span>
+                        <strong>{count}</strong>
+                      </div>
+                    ))}
+                  </div>
+                  <div className={styles.tableWrap}>
+                    <table className={styles.table}>
+                      <thead>
+                        <tr>
+                          <th>Reclamo</th>
+                          <th>Motivo</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {simulation.unassigned.map((item) => (
+                          <tr key={`${item.reclamoId}-${item.reason}`}>
+                            <td>{item.reclamoId}</td>
+                            <td>{humanizeReason(item.reason)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              <div className={styles.routePickerWrap}>
+                <label htmlFor="route-picker" className={styles.subtle}>Ruta a visualizar</label>
+                <select id="route-picker" className={styles.select} value={selectedRoute?.crewId ?? ""} onChange={(e) => setSelectedCrewId(e.target.value)}>
+                  {simulation.routes.map((route) => (
+                    <option key={route.crewId} value={route.crewId}>
+                      {route.nombre} ({route.assignedClaims} reclamos)
+                    </option>
+                  ))}
+                </select>
               </div>
-              <div className={styles.metric}>
-                <span>Distancia total (km)</span>
-                <strong>{selectedRoute.totalDistanceKm}</strong>
+
+              {selectedRoute && (
+                <div className={styles.grid}>
+                  <div className={styles.metric}><span>Usuario operativo</span><strong>{selectedRoute.nombre || selectedRoute.crewId}</strong></div>
+                  <div className={styles.metric}><span>Paradas</span><strong>{selectedRoute.assignedClaims}</strong></div>
+                  <div className={styles.metric}><span>Distancia total (km)</span><strong>{selectedRoute.totalDistanceKm}</strong></div>
+                  <div className={styles.metric}><span>Duracion total (min)</span><strong>{selectedRoute.totalDurationMin}</strong></div>
+                </div>
+              )}
+
+              <div className={styles.tableWrap}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Usuario operativo</th>
+                      <th>Sec.</th>
+                      <th>Reclamo</th>
+                      <th>Categoria</th>
+                      <th>Dist. tramo (km)</th>
+                      <th>Dur. tramo (min)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {topStops.length === 0 ? (
+                      <tr><td colSpan={6}>No hay paradas en la simulacion.</td></tr>
+                    ) : (
+                      topStops.map((stop) => (
+                        <tr key={`${stop.crewId}-${stop.reclamoId}-${stop.sequence}`}>
+                          <td>{stop.crewName}</td>
+                          <td>{stop.sequence}</td>
+                          <td>{stop.reclamoId}</td>
+                          <td>{stop.categoria}</td>
+                          <td>{stop.distanceFromPreviousKm}</td>
+                          <td>{stop.durationFromPreviousMin}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
-              <div className={styles.metric}>
-                <span>Duracion total (min)</span>
-                <strong>{selectedRoute.totalDurationMin}</strong>
+
+              <div className={styles.mapWrap}>
+                {!selectedRoute && <p className={styles.subtle}>No hay ruta seleccionada.</p>}
+                {selectedRoute && selectedRoute.stops.length < 2 && <p className={styles.subtle}>Se necesitan al menos 2 paradas para visualizar una ruta en el mapa.</p>}
+                {selectedRoute && selectedRoute.stops.length >= 2 && mapUrl && (
+                  <iframe title={`Mapa de ruta ${selectedRoute.nombre}`} src={mapUrl} loading="lazy" referrerPolicy="no-referrer-when-downgrade" allowFullScreen />
+                )}
               </div>
             </div>
           )}
+        </article>
+      )}
 
-          <div className={styles.mapWrap}>
-            {!selectedRoute && <p className={styles.subtle}>No hay ruta seleccionada.</p>}
-            {selectedRoute && selectedRoute.stops.length < 2 && <p className={styles.subtle}>Se necesitan al menos 2 paradas para visualizar una ruta en el mapa.</p>}
-            {selectedRoute && selectedRoute.stops.length >= 2 && mapUrl && (
-              <iframe title={`Mapa de ruta ${selectedRoute.nombre}`} src={mapUrl} loading="lazy" referrerPolicy="no-referrer-when-downgrade" allowFullScreen />
-            )}
+      {rules && (
+        <article className={styles.card}>
+          <div className={styles.head}>
+            <h3>Reglas vigentes</h3>
+            <span>{rules.data.categoryRules.length} categorias · {rules.data.crews.length} usuarios operativos · {rules.data.zones.length} zonas</span>
           </div>
         </article>
       )}

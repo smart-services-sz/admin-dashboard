@@ -178,7 +178,7 @@ class RoutingService {
     return apiFetch<{ status: string; data: RoutingPlanListItem[] }>(`${BASE}/plans`);
   }
 
-  saveAreaPlan(payload: Omit<RoutingAreaPlan, "createdAt" | "updatedAt">): Promise<{ status: string; data: RoutingAreaPlan }> {
+  saveAreaPlan(payload: Omit<RoutingAreaPlan, "createdAt" | "updatedAt" | "id"> & { id?: string }): Promise<{ status: string; data: RoutingAreaPlan }> {
     return apiFetch<{ status: string; data: RoutingAreaPlan }>(`${BASE}/area-plans`, {
       method: "POST",
       body: JSON.stringify(payload),

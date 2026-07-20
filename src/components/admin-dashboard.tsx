@@ -12,7 +12,6 @@ import styles from "./admin-dashboard.module.css";
 type Section =
   | "reclamos"
   | "ruteo-planes"
-  | "ruteo-nuevo"
   | "ruteo-rutas"
   | "metricas"
   | AccessSection;
@@ -21,7 +20,6 @@ type Theme = "light" | "dark";
 const sectionTitles: Record<Section, string> = {
   reclamos: "Gestion de reclamos",
   "ruteo-planes": "Ruteo y asignacion · Planes",
-  "ruteo-nuevo": "Ruteo y asignacion · Nuevo plan",
   "ruteo-rutas": "Ruteo y asignacion · Rutas",
   metricas: "Metricas operativas",
   users: "Administracion de usuarios",
@@ -133,7 +131,6 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
 
   const isRoutingSection =
     activeSection === "ruteo-planes" ||
-    activeSection === "ruteo-nuevo" ||
     activeSection === "ruteo-rutas";
 
   const [theme, setTheme] = useState<Theme>(() => {
@@ -190,9 +187,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
       const view =
         activeSection === "ruteo-planes"
           ? "plans"
-          : activeSection === "ruteo-nuevo"
-            ? "new"
-            : "routes";
+          : "routes";
       return <RoutingPanel view={view} />;
     }
 
@@ -284,16 +279,6 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
                   }}
                 >
                   <span className={styles.navLabel}>Planes</span>
-                </button>
-                <button
-                  type="button"
-                  data-active={activeSection === "ruteo-nuevo"}
-                  onClick={() => {
-                    setActiveSection("ruteo-nuevo");
-                    setIsSidebarOpen(false);
-                  }}
-                >
-                  <span className={styles.navLabel}>Nuevo plan</span>
                 </button>
                 <button
                   type="button"
