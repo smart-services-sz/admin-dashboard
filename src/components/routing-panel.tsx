@@ -105,6 +105,8 @@ export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
   const [planDialogContext, setPlanDialogContext] = useState<RoutingModalContext | null>(null);
   const [draftPlanId, setDraftPlanId] = useState<string>("");
   const [routeModalPlan, setRouteModalPlan] = useState<RoutingAreaPlan | null>(null);
+  const [routeWizardStep, setRouteWizardStep] = useState<1 | 2 | 3>(1);
+  const [selectedRoutePlanId, setSelectedRoutePlanId] = useState<string>("");
 
   const humanizeReason = (reason: string): string => {
     const dictionary: Record<string, string> = {
@@ -136,6 +138,14 @@ export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
       return matchesSearch && matchesArea;
     });
   }, [planSearch, savedAreaPlans, selectedAreaFilter]);
+
+  const selectedRoutePlan = useMemo(() => {
+    if (selectedRoutePlanId) {
+      return savedAreaPlans.find((plan) => plan.id === selectedRoutePlanId) ?? routeModalPlan;
+    }
+
+    return routeModalPlan;
+  }, [routeModalPlan, savedAreaPlans, selectedRoutePlanId]);
 
   const topStops = useMemo(() => {
     if (!simulation) return [];
@@ -289,6 +299,7 @@ export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
       const mapped = mapPlanToSimulation(response.data);
       setSimulation(mapped);
       setSelectedCrewId(mapped.routes[0]?.crewId ?? "");
+      setRouteWizardStep(3);
       rememberPlanId(response.data.id);
       setOkMessage(`Plan cargado: ${response.data.id}`);
     });
@@ -348,6 +359,8 @@ export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
     setDailyByUser(15);
     setDailyByCategory(20);
     setRouteModalPlan(null);
+    setSelectedRoutePlanId("");
+    setRouteWizardStep(1);
     setSimulation(null);
     setSelectedCrewId("");
     setError(null);
@@ -358,6 +371,8 @@ export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
     hydrateStateFromAreaPlan(plan);
     setPlanDialogContext("area");
     setRouteModalPlan(null);
+    setSelectedRoutePlanId("");
+    setRouteWizardStep(1);
     setSimulation(null);
     setSelectedCrewId("");
     setError(null);
@@ -365,9 +380,10 @@ export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
   };
 
   const openRoutesModal = (plan: RoutingAreaPlan) => {
-    hydrateStateFromAreaPlan(plan);
     setPlanDialogContext("routes");
     setRouteModalPlan(plan);
+    setSelectedRoutePlanId(plan.id);
+    setRouteWizardStep(1);
     setSimulation(null);
     setSelectedCrewId("");
     setError(null);
@@ -377,6 +393,25 @@ export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
   const closeDialogs = () => {
     setPlanDialogContext(null);
     setRouteModalPlan(null);
+    setSelectedRoutePlanId("");
+    setRouteWizardStep(1);
+  };
+
+  const handleLoadSelectedRoutePlan = async () => {
+    await runAction(async () => {
+      const plan = selectedRoutePlan;
+      if (!plan) {
+        throw new Error("Selecciona un plan por area para continuar.");
+      }
+
+      hydrateStateFromAreaPlan(plan);
+      setRouteModalPlan(plan);
+      setSelectedRoutePlanId(plan.id);
+      setRouteWizardStep(2);
+      setSimulation(null);
+      setSelectedCrewId("");
+      setOkMessage(`Plan cargado para rutas: ${plan.name}`);
+    });
   };
 
   const handleSearchOrigin = async () => {
@@ -513,6 +548,7 @@ export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
       });
       setSimulation(response);
       setSelectedCrewId(response.routes?.[0]?.crewId ?? "");
+      setRouteWizardStep(3);
       if (response.savedPlanId) rememberPlanId(response.savedPlanId);
       setOkMessage("Simulacion ejecutada correctamente.");
     });
@@ -531,6 +567,7 @@ export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
       });
       setSimulation(response);
       setSelectedCrewId(response.routes?.[0]?.crewId ?? "");
+      setRouteWizardStep(3);
       if (response.savedPlanId) rememberPlanId(response.savedPlanId);
       await loadRoutePlans();
       setOkMessage(`Plan generado. ID: ${response.savedPlanId ?? "sin id"}`);
@@ -542,6 +579,7 @@ export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
       const result = await routingService.confirmPlan(planId);
       rememberPlanId(planId);
       await loadRoutePlans();
+      setRouteWizardStep(3);
       setOkMessage(result.message || "Plan confirmado.");
     });
   };
@@ -559,6 +597,7 @@ export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
       });
       setSimulation(generated);
       setSelectedCrewId(generated.routes?.[0]?.crewId ?? "");
+      setRouteWizardStep(3);
       if (!generated.savedPlanId) {
         throw new Error("No se pudo obtener planId al generar.");
       }
@@ -605,7 +644,7 @@ export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
 
               <div className={styles.actionsRow}>
                 <button className={styles.buttonPrimary} type="button" onClick={openCreatePlanModal} disabled={loading}>
-                  Nueva area
+                  Nuevo plan
                 </button>
               </div>
             </div>
@@ -711,137 +750,176 @@ export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
         <article className={styles.card}>
           <div className={styles.head}>
             <div>
-              <h3>Modulo de rutas</h3>
-              <span>{routeModalPlan.name}</span>
+              <h3>Flujo de rutas</h3>
+              <span>{selectedRoutePlan?.name ?? routeModalPlan.name}</span>
             </div>
-            <button className={styles.buttonSecondary} type="button" onClick={() => setRouteModalPlan(null)}>
-              Cerrar
+            <button className={styles.buttonSecondary} type="button" onClick={closeDialogs}>
+              Cerrar flujo
             </button>
           </div>
 
-          <div className={styles.grid}>
-            <div className={styles.metric}>
-              <span>Areas</span>
-              <strong>{routeModalPlan.categorias.length > 0 ? routeModalPlan.categorias.join(", ") : "Todas"}</strong>
+          <div className={styles.guideGrid}>
+            <div className={styles.guideItem}>
+              <strong>Paso 1</strong>
+              <p>Selecciona el plan por area que vas a usar.</p>
             </div>
-            <div className={styles.metric}>
-              <span>Usuario</span>
-              <strong>{routeModalPlan.userName || routeModalPlan.userId}</strong>
+            <div className={styles.guideItem}>
+              <strong>Paso 2</strong>
+              <p>Revisa los parametros y genera la ruta optimizada.</p>
             </div>
-            <div className={styles.metric}>
-              <span>Origen</span>
-              <strong>{routeModalPlan.originLat.toFixed(4)}, {routeModalPlan.originLng.toFixed(4)}</strong>
-            </div>
-            <div className={styles.metric}>
-              <span>Limite diario</span>
-              <strong>{routeModalPlan.dailyByUser} / {routeModalPlan.dailyByCategory}</strong>
+            <div className={styles.guideItem}>
+              <strong>Paso 3</strong>
+              <p>Confirma la ruta y revisa el resultado generado.</p>
             </div>
           </div>
 
           <div className={styles.formSection}>
-            <h4 className={styles.sectionTitle}>Configuracion del plan</h4>
+            <h4 className={styles.sectionTitle}>Paso 1. Elegir plan</h4>
             <div className={styles.fieldGrid}>
-              <label className={styles.field} htmlFor="plan-name">
-                <span>Nombre del plan</span>
-                <input id="plan-name" type="text" value={planName} onChange={(e) => setPlanName(e.target.value)} placeholder="Ej: Plan Alumbrado Norte" />
-              </label>
-              <label className={styles.field} htmlFor="agent-user-id">
-                <span>Usuario operativo</span>
-                <select id="agent-user-id" className={styles.select} value={selectedOperationalUserId} onChange={(e) => setSelectedOperationalUserId(e.target.value)}>
-                  <option value="">Seleccionar</option>
-                  {operationalUsers.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.name || user.email}
+              <label className={styles.field} htmlFor="route-plan-selector">
+                <span>Plan por area</span>
+                <select
+                  id="route-plan-selector"
+                  className={styles.select}
+                  value={selectedRoutePlanId}
+                  onChange={(e) => setSelectedRoutePlanId(e.target.value)}
+                >
+                  <option value="">Seleccionar plan</option>
+                  {savedAreaPlans.map((plan) => (
+                    <option key={plan.id} value={plan.id}>
+                      {plan.name} · {plan.categorias.length > 0 ? plan.categorias.join(", ") : "Todas"}
                     </option>
                   ))}
                 </select>
               </label>
             </div>
 
-            <div className={styles.fieldGrid}>
-              <label className={styles.field} htmlFor="origin-lat">
-                <span>Punto de origen (latitud)</span>
-                <input id="origin-lat" type="number" step="0.000001" value={originLat} onChange={(e) => setOriginLat(Number(e.target.value || 0))} />
-              </label>
-              <label className={styles.field} htmlFor="origin-lng">
-                <span>Punto de origen (longitud)</span>
-                <input id="origin-lng" type="number" step="0.000001" value={originLng} onChange={(e) => setOriginLng(Number(e.target.value || 0))} />
-              </label>
-              <label className={styles.field} htmlFor="daily-by-user">
-                <span>Reclamos diarios por usuario</span>
-                <input id="daily-by-user" type="number" min={1} value={dailyByUser} onChange={(e) => setDailyByUser(Number(e.target.value || 1))} />
-              </label>
-              <label className={styles.field} htmlFor="daily-by-category">
-                <span>Reclamos diarios por area</span>
-                <input id="daily-by-category" type="number" min={1} value={dailyByCategory} onChange={(e) => setDailyByCategory(Number(e.target.value || 1))} />
-              </label>
+            <div className={styles.actionsRow}>
+              <button className={styles.buttonPrimary} type="button" onClick={handleLoadSelectedRoutePlan} disabled={loading || !selectedRoutePlanId}>
+                Cargar plan y continuar
+              </button>
             </div>
 
+            {selectedRoutePlan && routeWizardStep === 1 && (
+              <p className={styles.subtle}>
+                {selectedRoutePlan.name} está listo para pasar al siguiente paso.
+              </p>
+            )}
+          </div>
+
+          {routeWizardStep >= 2 && selectedRoutePlan && (
             <div className={styles.formSection}>
-              <h5 className={styles.sectionTitle}>Areas de reclamo</h5>
+              <h4 className={styles.sectionTitle}>Paso 2. Preparar y generar</h4>
               <div className={styles.grid}>
-                {categoryOptions.map((categoria) => {
-                  const checked = selectedCategorias.includes(categoria);
-                  return (
-                    <label key={categoria} className={styles.checkbox}>
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={(e) => {
-                          setSelectedCategorias((current) =>
-                            e.target.checked ? [...current, categoria] : current.filter((item) => item !== categoria),
-                          );
-                        }}
-                      />
-                      <span>{categoria}</span>
-                    </label>
-                  );
-                })}
+                <div className={styles.metric}>
+                  <span>Areas</span>
+                  <strong>{selectedRoutePlan.categorias.length > 0 ? selectedRoutePlan.categorias.join(", ") : "Todas"}</strong>
+                </div>
+                <div className={styles.metric}>
+                  <span>Usuario</span>
+                  <strong>{selectedRoutePlan.userName || selectedRoutePlan.userId}</strong>
+                </div>
+                <div className={styles.metric}>
+                  <span>Origen</span>
+                  <strong>{selectedRoutePlan.originLat.toFixed(4)}, {selectedRoutePlan.originLng.toFixed(4)}</strong>
+                </div>
+                <div className={styles.metric}>
+                  <span>Limite diario</span>
+                  <strong>{selectedRoutePlan.dailyByUser} / {selectedRoutePlan.dailyByCategory}</strong>
+                </div>
+              </div>
+
+              <div className={styles.fieldGrid}>
+                <label className={styles.field} htmlFor="plan-name">
+                  <span>Nombre del plan</span>
+                  <input id="plan-name" type="text" value={planName} onChange={(e) => setPlanName(e.target.value)} placeholder="Ej: Plan Alumbrado Norte" />
+                </label>
+                <label className={styles.field} htmlFor="agent-user-id">
+                  <span>Usuario operativo</span>
+                  <select id="agent-user-id" className={styles.select} value={selectedOperationalUserId} onChange={(e) => setSelectedOperationalUserId(e.target.value)}>
+                    <option value="">Seleccionar</option>
+                    {operationalUsers.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.name || user.email}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className={styles.field} htmlFor="origin-lat">
+                  <span>Punto de origen (latitud)</span>
+                  <input id="origin-lat" type="number" step="0.000001" value={originLat} onChange={(e) => setOriginLat(Number(e.target.value || 0))} />
+                </label>
+                <label className={styles.field} htmlFor="origin-lng">
+                  <span>Punto de origen (longitud)</span>
+                  <input id="origin-lng" type="number" step="0.000001" value={originLng} onChange={(e) => setOriginLng(Number(e.target.value || 0))} />
+                </label>
+                <label className={styles.field} htmlFor="daily-by-user">
+                  <span>Reclamos diarios por usuario</span>
+                  <input id="daily-by-user" type="number" min={1} value={dailyByUser} onChange={(e) => setDailyByUser(Number(e.target.value || 1))} />
+                </label>
+                <label className={styles.field} htmlFor="daily-by-category">
+                  <span>Reclamos diarios por area</span>
+                  <input id="daily-by-category" type="number" min={1} value={dailyByCategory} onChange={(e) => setDailyByCategory(Number(e.target.value || 1))} />
+                </label>
+                <label className={styles.field} htmlFor="max-fetch">
+                  <span>Maximo de reclamos a evaluar</span>
+                  <input id="max-fetch" type="number" min={50} max={5000} value={maxFetch} onChange={(e) => setMaxFetch(Number(e.target.value || 200))} />
+                </label>
+                <label className={styles.checkbox} htmlFor="google-optimize">
+                  <input id="google-optimize" type="checkbox" checked={useGoogleOptimization} onChange={(e) => setUseGoogleOptimization(e.target.checked)} />
+                  Usar optimizacion de Google
+                </label>
+              </div>
+
+              <div className={styles.formSection}>
+                <h5 className={styles.sectionTitle}>Areas de reclamo</h5>
+                <div className={styles.grid}>
+                  {categoryOptions.map((categoria) => {
+                    const checked = selectedCategorias.includes(categoria);
+                    return (
+                      <label key={categoria} className={styles.checkbox}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            setSelectedCategorias((current) =>
+                              e.target.checked ? [...current, categoria] : current.filter((item) => item !== categoria),
+                            );
+                          }}
+                        />
+                        <span>{categoria}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className={styles.actionsRow}>
+                <button className={styles.buttonSecondary} type="button" onClick={handleSearchOrigin} disabled={loading}>
+                  Buscar origen
+                </button>
+                <button className={styles.buttonSecondary} type="button" onClick={handleSaveAreaPlan} disabled={loading}>
+                  Guardar plan
+                </button>
+                <button className={styles.buttonSecondary} type="button" onClick={handleLoadRules} disabled={loading}>
+                  Recargar reglas
+                </button>
+              </div>
+
+              <div className={styles.actionsRow}>
+                <button className={styles.buttonPrimary} type="button" onClick={handleSimulate} disabled={loading}>
+                  Generar vista previa
+                </button>
+                <button className={styles.buttonPrimary} type="button" onClick={handleGenerate} disabled={loading}>
+                  Generar ruta optimizada
+                </button>
               </div>
             </div>
+          )}
 
-            <div className={styles.actionsRow}>
-              <button className={styles.buttonSecondary} type="button" onClick={handleSearchOrigin} disabled={loading}>
-                Buscar origen
-              </button>
-              <button className={styles.buttonSecondary} type="button" onClick={handleSaveAreaPlan} disabled={loading}>
-                Guardar cambios
-              </button>
-              <button className={styles.buttonSecondary} type="button" onClick={handleLoadRules} disabled={loading}>
-                Recargar reglas
-              </button>
-            </div>
-          </div>
-
-          <div className={styles.formSection}>
-            <h4 className={styles.sectionTitle}>Generacion de rutas</h4>
-            <div className={styles.fieldGrid}>
-              <label className={styles.field} htmlFor="max-fetch">
-                <span>Maximo de reclamos a evaluar</span>
-                <input id="max-fetch" type="number" min={50} max={5000} value={maxFetch} onChange={(e) => setMaxFetch(Number(e.target.value || 200))} />
-              </label>
-              <label className={styles.checkbox} htmlFor="google-optimize">
-                <input id="google-optimize" type="checkbox" checked={useGoogleOptimization} onChange={(e) => setUseGoogleOptimization(e.target.checked)} />
-                Usar optimizacion de Google
-              </label>
-            </div>
-
-            <div className={styles.actionsRow}>
-              <button className={styles.buttonPrimary} type="button" onClick={handleSimulate} disabled={loading}>
-                Simular ruta
-              </button>
-              <button className={styles.buttonPrimary} type="button" onClick={handleGenerate} disabled={loading}>
-                Generar ruta
-              </button>
-              <button className={styles.buttonPrimary} type="button" onClick={handleGenerateAndConfirm} disabled={loading}>
-                Generar y confirmar ruta
-              </button>
-            </div>
-          </div>
-
-          {simulation && (
+          {routeWizardStep >= 3 && simulation && (
             <div className={styles.formSection}>
-              <h4 className={styles.sectionTitle}>Resultado de ruteo</h4>
+              <h4 className={styles.sectionTitle}>Paso 3. Revisar y confirmar</h4>
               <div className={styles.grid}>
                 <div className={styles.metric}><span>Reclamos leidos</span><strong>{simulation.summary.totalFetched}</strong></div>
                 <div className={styles.metric}><span>Asignados</span><strong>{simulation.summary.totalAssigned}</strong></div>
@@ -939,6 +1017,17 @@ export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
                   <iframe title={`Mapa de ruta ${selectedRoute.nombre}`} src={mapUrl} loading="lazy" referrerPolicy="no-referrer-when-downgrade" allowFullScreen />
                 )}
               </div>
+
+              <div className={styles.actionsRow}>
+                {simulation.savedPlanId && (
+                  <button className={styles.buttonPrimary} type="button" onClick={() => void handleConfirmPlanById(simulation.savedPlanId!)} disabled={loading}>
+                    Confirmar plan generado
+                  </button>
+                )}
+                <button className={styles.buttonSecondary} type="button" onClick={() => setRouteWizardStep(2)} disabled={loading}>
+                  Volver al paso 2
+                </button>
+              </div>
             </div>
           )}
         </article>
@@ -949,8 +1038,8 @@ export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
           <div className={styles.modalPanel} role="dialog" aria-modal="true" aria-labelledby="area-plan-modal-title" onClick={(event) => event.stopPropagation()}>
             <div className={styles.modalHeader}>
               <div>
-                <h3 id="area-plan-modal-title">{draftPlanId ? "Editar area" : "Nueva area"}</h3>
-                <p className={styles.subtle}>Crea o ajusta el plan de area antes de abrir el modulo de rutas.</p>
+                <h3 id="area-plan-modal-title">{draftPlanId ? "Editar plan" : "Nuevo plan"}</h3>
+                <p className={styles.subtle}>Crea o ajusta el plan por area antes de abrir el modulo de rutas.</p>
               </div>
               <button className={styles.buttonSecondary} type="button" onClick={closeDialogs}>
                 Cerrar
@@ -1019,7 +1108,7 @@ export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
                   Buscar origen
                 </button>
                 <button className={styles.buttonPrimary} type="button" onClick={handleSaveAreaPlan} disabled={loading}>
-                  Guardar area
+                  Guardar plan
                 </button>
               </div>
             </div>
