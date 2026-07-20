@@ -178,6 +178,19 @@
   gap: 8px;
 }
 
+.navGroup {
+  display: grid;
+  gap: 6px;
+}
+
+.navSubmenu {
+  display: grid;
+  gap: 6px;
+  margin-left: 14px;
+  padding-left: 12px;
+  border-left: 1px solid rgba(215, 230, 255, 0.18);
+}
+
 .navMenu button {
   display: flex;
   align-items: center;
@@ -219,6 +232,11 @@
   background: var(--sidebar-nav-active);
   color: #f0fff9;
   font-weight: 600;
+}
+
+.navSubmenu button {
+  padding: 10px 12px;
+  font-size: 0.9rem;
 }
 
 .pageColumn {

@@ -46,10 +46,31 @@ const DEFAULT_RULES: UpsertRoutingRulesPayload = {
 
 const LAST_ROUTING_PLAN_ID_KEY = "routing:lastPlanId";
 const ROUTING_ACTIVE_AREA_PLAN_ID_KEY = "routing:activeAreaPlanId";
+const ROUTING_CATEGORY_OPTIONS = [
+  "agua_y_cloacas",
+  "alumbrado",
+  "baches_y_pavimento",
+  "arbolado",
+  "residuos",
+  "electricidad",
+  "gas",
+  "transporte",
+  "infraestructura",
+  "otros",
+];
 
 type RoutingAreaPlanDraft = Omit<RoutingAreaPlan, "createdAt" | "updatedAt">;
 
-export function RoutingPanel() {
+type RoutingPanelView = "plans" | "new" | "routes";
+
+type RoutingPanelProps = {
+  view?: RoutingPanelView;
+};
+
+export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
+  const isPlansView = view === "plans";
+  const isNewPlanView = view === "new";
+  const isRoutesView = view === "routes";
   const [maxFetch, setMaxFetch] = useState(200);
   const [useGoogleOptimization, setUseGoogleOptimization] = useState(true);
   const [originLat, setOriginLat] = useState(-34.55);
@@ -104,11 +125,8 @@ export function RoutingPanel() {
   }, [simulation, selectedCrewId]);
 
   const categoryOptions = useMemo(
-    () =>
-      (rules?.data.categoryRules.length ? rules.data.categoryRules : DEFAULT_RULES.categoryRules).map(
-        (rule) => rule.categoria,
-      ),
-    [rules],
+    () => ROUTING_CATEGORY_OPTIONS,
+    [],
   );
 
   const mapUrl = useMemo(() => {
@@ -375,7 +393,7 @@ export function RoutingPanel() {
     });
   };
 
-  const buildFastAssignmentPayload = async (plan = activeAreaPlan ?? buildDraftFromState()): Promise<UpsertRoutingRulesPayload> => {
+  const buildFastAssignmentPayload = async (plan = buildDraftFromState()): Promise<UpsertRoutingRulesPayload> => {
     if (!Number.isFinite(plan.originLat) || !Number.isFinite(plan.originLng)) {
       throw new Error("Define un origen valido (lat/lng)");
     }
@@ -456,7 +474,7 @@ export function RoutingPanel() {
 
   const handleSimulate = async () => {
     await runAction(async () => {
-      const overrideRules = await buildFastAssignmentPayload();
+      const overrideRules = await buildFastAssignmentPayload(buildDraftFromState());
       const response = await routingService.simulate({
         maxFetch,
         useGoogleOptimization,
@@ -473,7 +491,7 @@ export function RoutingPanel() {
 
   const handleGenerate = async () => {
     await runAction(async () => {
-      const overrideRules = await buildFastAssignmentPayload();
+      const overrideRules = await buildFastAssignmentPayload(buildDraftFromState());
       await routingService.upsertRules(overrideRules);
       const response = await routingService.generate({
         maxFetch,
@@ -513,7 +531,7 @@ export function RoutingPanel() {
 
   const handleGenerateAndConfirm = async () => {
     await runAction(async () => {
-      const payload = await buildFastAssignmentPayload();
+      const payload = await buildFastAssignmentPayload(buildDraftFromState());
       await routingService.upsertRules(payload);
       const generated = await routingService.generate({
         maxFetch,
@@ -539,9 +557,16 @@ export function RoutingPanel() {
       <article className={styles.card}>
         <div className={styles.head}>
           <h2>Ruteo operativo</h2>
-          <span>Planes por area y rutas separadas</span>
+          <span>
+            {isPlansView
+              ? "Planes por area"
+              : isNewPlanView
+                ? "Crear un nuevo plan"
+                : "Rutas y asignaciones"}
+          </span>
         </div>
 
+        {!isRoutesView && (
         <div className={styles.formSection}>
           <h4 className={styles.sectionTitle}>Modulo 1: Planes por area</h4>
           <p className={styles.subtle}>
@@ -641,6 +666,7 @@ export function RoutingPanel() {
             </button>
           </div>
 
+          {isPlansView && (
           <div className={styles.formSection}>
             <h5 className={styles.sectionTitle}>Planes guardados</h5>
             {savedAreaPlans.length === 0 ? (
@@ -665,12 +691,15 @@ export function RoutingPanel() {
               </div>
             )}
           </div>
+          )}
 
           <div className={styles.mapWrap}>
             {originMapUrl && <iframe title="Mapa de punto de origen" src={originMapUrl} loading="lazy" referrerPolicy="no-referrer-when-downgrade" allowFullScreen />}
           </div>
         </div>
+        )}
 
+        {isRoutesView && (
         <div className={styles.formSection}>
           <h4 className={styles.sectionTitle}>Modulo 2: Rutas</h4>
           <p className={styles.subtle}>Elige un plan guardado y genera la ruta usando ese plan como configuracion activa.</p>
@@ -746,7 +775,9 @@ export function RoutingPanel() {
             )}
           </div>
         </div>
+        )}
 
+        {isRoutesView && (
         <div className={styles.formSection}>
           <h4 className={styles.sectionTitle}>Confirmacion manual</h4>
           <div className={styles.fieldGrid}>
@@ -761,6 +792,7 @@ export function RoutingPanel() {
             </button>
           </div>
         </div>
+        )}
 
         {okMessage && <div className={styles.statusOk}>{okMessage}</div>}
         {error && <div className={styles.statusError}>{error}</div>}
@@ -776,7 +808,7 @@ export function RoutingPanel() {
         </article>
       )}
 
-      {simulation && (
+      {isRoutesView && simulation && (
         <article className={styles.card}>
           <div className={styles.head}>
             <h3>Resultado de ruteo</h3>

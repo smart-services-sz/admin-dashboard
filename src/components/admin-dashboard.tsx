@@ -9,12 +9,20 @@ import { RoutingPanel } from "./routing-panel";
 import { LogoutButton } from "@/components/logout-button";
 import styles from "./admin-dashboard.module.css";
 
-type Section = "reclamos" | "ruteo" | "metricas" | AccessSection;
+type Section =
+  | "reclamos"
+  | "ruteo-planes"
+  | "ruteo-nuevo"
+  | "ruteo-rutas"
+  | "metricas"
+  | AccessSection;
 type Theme = "light" | "dark";
 
 const sectionTitles: Record<Section, string> = {
   reclamos: "Gestion de reclamos",
-  ruteo: "Ruteo y asignacion",
+  "ruteo-planes": "Ruteo y asignacion · Planes",
+  "ruteo-nuevo": "Ruteo y asignacion · Nuevo plan",
+  "ruteo-rutas": "Ruteo y asignacion · Rutas",
   metricas: "Metricas operativas",
   users: "Administracion de usuarios",
   roles: "Administracion de roles",
@@ -123,6 +131,11 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [activeSection, setActiveSection] = useState<Section>("reclamos");
 
+  const isRoutingSection =
+    activeSection === "ruteo-planes" ||
+    activeSection === "ruteo-nuevo" ||
+    activeSection === "ruteo-rutas";
+
   const [theme, setTheme] = useState<Theme>(() => {
     if (typeof window === "undefined") {
       return "light";
@@ -173,8 +186,14 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
       );
     }
 
-    if (activeSection === "ruteo") {
-      return <RoutingPanel />;
+    if (isRoutingSection) {
+      const view =
+        activeSection === "ruteo-planes"
+          ? "plans"
+          : activeSection === "ruteo-nuevo"
+            ? "new"
+            : "routes";
+      return <RoutingPanel view={view} />;
     }
 
     if (activeSection === "reclamos" && !canViewReclamos) {
@@ -243,17 +262,51 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
             </button>
           )}
           {canViewReclamos && (
-            <button
-              type="button"
-              data-active={activeSection === "ruteo"}
-              onClick={() => {
-                setActiveSection("ruteo");
-                setIsSidebarOpen(false);
-              }}
-            >
-              <RoutingIcon />
-              <span className={styles.navLabel}>Ruteo</span>
-            </button>
+            <div className={styles.navGroup} data-open={isRoutingSection}>
+              <button
+                type="button"
+                data-active={isRoutingSection}
+                onClick={() => {
+                  setActiveSection("ruteo-rutas");
+                  setIsSidebarOpen(false);
+                }}
+              >
+                <RoutingIcon />
+                <span className={styles.navLabel}>Ruteo</span>
+              </button>
+              <div className={styles.navSubmenu}>
+                <button
+                  type="button"
+                  data-active={activeSection === "ruteo-planes"}
+                  onClick={() => {
+                    setActiveSection("ruteo-planes");
+                    setIsSidebarOpen(false);
+                  }}
+                >
+                  <span className={styles.navLabel}>Planes</span>
+                </button>
+                <button
+                  type="button"
+                  data-active={activeSection === "ruteo-nuevo"}
+                  onClick={() => {
+                    setActiveSection("ruteo-nuevo");
+                    setIsSidebarOpen(false);
+                  }}
+                >
+                  <span className={styles.navLabel}>Nuevo plan</span>
+                </button>
+                <button
+                  type="button"
+                  data-active={activeSection === "ruteo-rutas"}
+                  onClick={() => {
+                    setActiveSection("ruteo-rutas");
+                    setIsSidebarOpen(false);
+                  }}
+                >
+                  <span className={styles.navLabel}>Rutas</span>
+                </button>
+              </div>
+            </div>
           )}
           <button
             type="button"
