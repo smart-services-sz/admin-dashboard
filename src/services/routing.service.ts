@@ -135,9 +135,40 @@ export interface RoutingPlanResponse {
   };
 }
 
+export interface RoutingAreaPlan {
+  id: string;
+  name: string;
+  userId: string;
+  userName?: string | null;
+  categorias: string[];
+  originLat: number;
+  originLng: number;
+  dailyByUser: number;
+  dailyByCategory: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 class RoutingService {
   getRules(): Promise<RoutingRulesResponse> {
     return apiFetch<RoutingRulesResponse>(`${BASE}/rules`);
+  }
+
+  getAreaPlans(): Promise<{ status: string; data: RoutingAreaPlan[] }> {
+    return apiFetch<{ status: string; data: RoutingAreaPlan[] }>(`${BASE}/area-plans`);
+  }
+
+  saveAreaPlan(payload: Omit<RoutingAreaPlan, "createdAt" | "updatedAt">): Promise<{ status: string; data: RoutingAreaPlan }> {
+    return apiFetch<{ status: string; data: RoutingAreaPlan }>(`${BASE}/area-plans`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  deleteAreaPlan(id: string): Promise<{ status: string; message: string }> {
+    return apiFetch<{ status: string; message: string }>(`${BASE}/area-plans/${id}`, {
+      method: "DELETE",
+    });
   }
 
   upsertRules(payload: UpsertRoutingRulesPayload): Promise<{ status: string; message: string }> {

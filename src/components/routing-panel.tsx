@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   routingService,
+  type RoutingAreaPlan,
   type RoutingRulesResponse,
   type RoutingSimulationResult,
   type RoutingZoneRule,
@@ -42,20 +43,9 @@ const DEFAULT_RULES: UpsertRoutingRulesPayload = {
 };
 
 const LAST_ROUTING_PLAN_ID_KEY = "routing:lastPlanId";
-const ROUTING_AREA_PLANS_KEY = "routing:areaPlans";
 const ROUTING_ACTIVE_AREA_PLAN_ID_KEY = "routing:activeAreaPlanId";
 
-type RoutingAreaPlanDraft = {
-  id: string;
-  name: string;
-  userId: string;
-  categorias: string[];
-  originLat: number;
-  originLng: number;
-  dailyByUser: number;
-  dailyByCategory: number;
-  updatedAt: string;
-};
+type RoutingAreaPlanDraft = Omit<RoutingAreaPlan, "createdAt" | "updatedAt">;
 
 export function RoutingPanel() {
   const [maxFetch, setMaxFetch] = useState(200);
@@ -77,7 +67,7 @@ export function RoutingPanel() {
   const [selectedOperationalUserId, setSelectedOperationalUserId] = useState<string>("");
   const [selectedCategorias, setSelectedCategorias] = useState<string[]>([]);
   const [planName, setPlanName] = useState<string>("");
-  const [savedAreaPlans, setSavedAreaPlans] = useState<RoutingAreaPlanDraft[]>([]);
+  const [savedAreaPlans, setSavedAreaPlans] = useState<RoutingAreaPlan[]>([]);
   const [activeAreaPlanId, setActiveAreaPlanId] = useState<string>("");
 
   const humanizeReason = (reason: string): string => {
@@ -87,6 +77,11 @@ export function RoutingPanel() {
     };
     return dictionary[reason] ?? reason;
   };
+
+  const activeAreaPlan = useMemo(
+    () => savedAreaPlans.find((plan) => plan.id === activeAreaPlanId) ?? null,
+    [activeAreaPlanId, savedAreaPlans],
+  );
 
   const topStops = useMemo(() => {
     if (!simulation) return [];
@@ -100,14 +95,8 @@ export function RoutingPanel() {
   }, [simulation]);
 
   const selectedRoute = useMemo(() => {
-    if (!simulation?.routes?.length) {
-      return null;
-    }
-
-    if (!selectedCrewId) {
-      return simulation.routes[0];
-    }
-
+    if (!simulation?.routes?.length) return null;
+    if (!selectedCrewId) return simulation.routes[0];
     return simulation.routes.find((route) => route.crewId === selectedCrewId) ?? simulation.routes[0];
   }, [simulation, selectedCrewId]);
 
@@ -119,15 +108,8 @@ export function RoutingPanel() {
     [rules],
   );
 
-  const activeAreaPlan = useMemo(
-    () => savedAreaPlans.find((plan) => plan.id === activeAreaPlanId) ?? null,
-    [activeAreaPlanId, savedAreaPlans],
-  );
-
   const mapUrl = useMemo(() => {
-    if (!selectedRoute || selectedRoute.stops.length < 2) {
-      return "";
-    }
+    if (!selectedRoute || selectedRoute.stops.length < 2) return "";
 
     const points = selectedRoute.stops.map((stop) => `${stop.lat},${stop.lng}`);
     const origin = points[0];
@@ -143,11 +125,7 @@ export function RoutingPanel() {
         `destination=${encodeURIComponent(destination)}`,
         "mode=driving",
       ];
-
-      if (waypoints) {
-        query.push(`waypoints=${encodeURIComponent(waypoints)}`);
-      }
-
+      if (waypoints) query.push(`waypoints=${encodeURIComponent(waypoints)}`);
       return `https://www.google.com/maps/embed/v1/directions?${query.join("&")}`;
     }
 
@@ -157,24 +135,16 @@ export function RoutingPanel() {
       `destination=${encodeURIComponent(destination)}`,
       "travelmode=driving",
     ];
-
-    if (waypoints) {
-      fallback.push(`waypoints=${encodeURIComponent(waypoints)}`);
-    }
-
+    if (waypoints) fallback.push(`waypoints=${encodeURIComponent(waypoints)}`);
     return `https://www.google.com/maps/dir/?${fallback.join("&")}`;
   }, [selectedRoute]);
 
   const originMapUrl = useMemo(() => {
     const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
     const coordinateQuery = `${originLat},${originLng}`;
-
     if (key) {
-      return `https://www.google.com/maps/embed/v1/place?key=${encodeURIComponent(
-        key,
-      )}&q=${encodeURIComponent(coordinateQuery)}`;
+      return `https://www.google.com/maps/embed/v1/place?key=${encodeURIComponent(key)}&q=${encodeURIComponent(coordinateQuery)}`;
     }
-
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(coordinateQuery)}`;
   }, [originLat, originLng]);
 
@@ -192,7 +162,6 @@ export function RoutingPanel() {
     setLoading(true);
     setError(null);
     setOkMessage(null);
-
     try {
       await task();
     } catch (err) {
@@ -202,20 +171,7 @@ export function RoutingPanel() {
     }
   };
 
-  const persistAreaPlans = (plans: RoutingAreaPlanDraft[], nextActiveId: string) => {
-    setSavedAreaPlans(plans);
-    setActiveAreaPlanId(nextActiveId);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(ROUTING_AREA_PLANS_KEY, JSON.stringify(plans));
-      if (nextActiveId) {
-        window.localStorage.setItem(ROUTING_ACTIVE_AREA_PLAN_ID_KEY, nextActiveId);
-      } else {
-        window.localStorage.removeItem(ROUTING_ACTIVE_AREA_PLAN_ID_KEY);
-      }
-    }
-  };
-
-  const hydrateStateFromAreaPlan = (plan: RoutingAreaPlanDraft) => {
+  const hydrateStateFromAreaPlan = (plan: Pick<RoutingAreaPlan, "id" | "name" | "userId" | "categorias" | "originLat" | "originLng" | "dailyByUser" | "dailyByCategory">) => {
     setPlanName(plan.name);
     setSelectedOperationalUserId(plan.userId);
     setSelectedCategorias(plan.categorias);
@@ -229,26 +185,17 @@ export function RoutingPanel() {
     }
   };
 
-  const hydrateFormFromRules = (
-    source: RoutingRulesResponse["data"],
-    agentUsers: ManagedUser[] = operationalUsers,
-  ) => {
+  const hydrateFormFromRules = (source: RoutingRulesResponse["data"], agentUsers: ManagedUser[] = operationalUsers) => {
     setPlanName("Plan activo persistido");
     if (source.categoryRules.length > 0) {
       setSelectedCategorias(source.categoryRules.map((rule) => rule.categoria));
       setDailyByCategory(source.categoryRules[0].cupoDiario);
     }
-
     if (source.crews.length > 0) {
       const firstCrew = source.crews[0];
       setDailyByUser(firstCrew.maxReclamosDiarios);
-      if (typeof firstCrew.startLat === "number") {
-        setOriginLat(firstCrew.startLat);
-      }
-      if (typeof firstCrew.startLng === "number") {
-        setOriginLng(firstCrew.startLng);
-      }
-
+      if (typeof firstCrew.startLat === "number") setOriginLat(firstCrew.startLat);
+      if (typeof firstCrew.startLng === "number") setOriginLng(firstCrew.startLng);
       const assigneeId = firstCrew.userId ?? firstCrew.crewId;
       if (assigneeId && agentUsers.some((user) => user.id === assigneeId)) {
         setSelectedOperationalUserId(assigneeId);
@@ -260,33 +207,52 @@ export function RoutingPanel() {
     id: activeAreaPlanId || crypto.randomUUID(),
     name: planName.trim() || `Plan ${selectedCategorias.join(", ") || "general"}`,
     userId: selectedOperationalUserId,
+    userName: operationalUsers.find((user) => user.id === selectedOperationalUserId)?.name ?? undefined,
     categorias: selectedCategorias,
     originLat,
     originLng,
     dailyByUser,
     dailyByCategory,
-    updatedAt: new Date().toISOString(),
   });
+
+  const loadAreaPlans = async (preferredPlanId?: string) => {
+    const response = await routingService.getAreaPlans();
+    setSavedAreaPlans(response.data);
+
+    const rememberedPlanId =
+      preferredPlanId ??
+      (typeof window !== "undefined" ? window.localStorage.getItem(ROUTING_ACTIVE_AREA_PLAN_ID_KEY) ?? "" : "");
+    const selectedPlan = response.data.find((plan) => plan.id === rememberedPlanId) ?? response.data[0] ?? null;
+    if (selectedPlan) {
+      hydrateStateFromAreaPlan(selectedPlan);
+    }
+  };
+
+  const rememberPlanId = (planId: string) => {
+    setLastPlanId(planId);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(LAST_ROUTING_PLAN_ID_KEY, planId);
+    }
+  };
 
   useEffect(() => {
     const loadInitialRoutingState = async () => {
       try {
-        const [usersResponse, rulesResponse] = await Promise.all([
+        const [usersResponse, rulesResponse, areaPlansResponse] = await Promise.all([
           accessControlService.getActiveUsersByRole("AGENT"),
           routingService.getRules(),
+          routingService.getAreaPlans(),
         ]);
+
         const agentUsers = usersResponse.data;
         setOperationalUsers(agentUsers);
         setRules(rulesResponse);
+        setSavedAreaPlans(areaPlansResponse.data);
         hydrateFormFromRules(rulesResponse.data, agentUsers);
 
         if (typeof window !== "undefined") {
-          const savedPlansRaw = window.localStorage.getItem(ROUTING_AREA_PLANS_KEY);
-          const savedPlans = savedPlansRaw ? (JSON.parse(savedPlansRaw) as RoutingAreaPlanDraft[]) : [];
-          setSavedAreaPlans(savedPlans);
-
           const activePlanId = window.localStorage.getItem(ROUTING_ACTIVE_AREA_PLAN_ID_KEY) ?? "";
-          const selectedPlan = savedPlans.find((plan) => plan.id === activePlanId);
+          const selectedPlan = areaPlansResponse.data.find((plan) => plan.id === activePlanId) ?? areaPlansResponse.data[0] ?? null;
           if (selectedPlan) {
             hydrateStateFromAreaPlan(selectedPlan);
           } else if (agentUsers.length > 0) {
@@ -299,9 +265,7 @@ export function RoutingPanel() {
           }
 
           const savedPlanId = window.localStorage.getItem(LAST_ROUTING_PLAN_ID_KEY);
-          if (savedPlanId) {
-            setLastPlanId(savedPlanId);
-          }
+          if (savedPlanId) setLastPlanId(savedPlanId);
         }
       } catch {
         // Non-blocking.
@@ -352,7 +316,6 @@ export function RoutingPanel() {
       const first = data.results[0];
       const lat = first.geometry?.location?.lat;
       const lng = first.geometry?.location?.lng;
-
       if (typeof lat !== "number" || typeof lng !== "number") {
         throw new Error("La respuesta de geocoding no trajo coordenadas validas.");
       }
@@ -368,7 +331,6 @@ export function RoutingPanel() {
     if (!Number.isFinite(plan.originLat) || !Number.isFinite(plan.originLng)) {
       throw new Error("Define un origen valido (lat/lng)");
     }
-
     if (!plan.userId) {
       throw new Error("Selecciona un usuario AGENT para asignar la ruta.");
     }
@@ -378,25 +340,11 @@ export function RoutingPanel() {
       throw new Error("El usuario AGENT seleccionado no esta disponible.");
     }
 
-    const baseRules =
-      rules?.data ??
-      (await routingService.getRules()).data ?? {
-        categoryRules: [],
-        crews: [],
-        zones: [],
-      };
-
-    const seedSource =
-      baseRules.categoryRules.length > 0 && baseRules.zones.length > 0
-        ? baseRules
-        : DEFAULT_RULES;
-
+    const baseRules = rules?.data ?? (await routingService.getRules()).data ?? { categoryRules: [], crews: [], zones: [] };
+    const seedSource = baseRules.categoryRules.length > 0 && baseRules.zones.length > 0 ? baseRules : DEFAULT_RULES;
     const effectiveCategoryRules = seedSource.categoryRules
       .filter((rule) => plan.categorias.length === 0 || plan.categorias.includes(rule.categoria))
-      .map((rule) => ({
-        ...rule,
-        cupoDiario: plan.dailyByCategory,
-      }));
+      .map((rule) => ({ ...rule, cupoDiario: plan.dailyByCategory }));
 
     if (effectiveCategoryRules.length === 0) {
       throw new Error("Selecciona al menos una categoria para el plan.");
@@ -426,19 +374,13 @@ export function RoutingPanel() {
       if (!planName.trim()) {
         throw new Error("Asigna un nombre al plan por area.");
       }
-
-      const draft = buildDraftFromState();
-      const nextPlans = savedAreaPlans.some((plan) => plan.id === draft.id)
-        ? savedAreaPlans.map((plan) => (plan.id === draft.id ? draft : plan))
-        : [draft, ...savedAreaPlans];
-
-      persistAreaPlans(nextPlans, draft.id);
-      hydrateStateFromAreaPlan(draft);
-      setOkMessage(`Plan por area guardado: ${draft.name}`);
+      const response = await routingService.saveAreaPlan(buildDraftFromState());
+      await loadAreaPlans(response.data.id);
+      setOkMessage(`Plan por area guardado: ${response.data.name}`);
     });
   };
 
-  const handleSelectAreaPlan = async (plan: RoutingAreaPlanDraft) => {
+  const handleSelectAreaPlan = async (plan: RoutingAreaPlan) => {
     await runAction(async () => {
       hydrateStateFromAreaPlan(plan);
       setOkMessage(`Plan seleccionado: ${plan.name}`);
@@ -447,9 +389,9 @@ export function RoutingPanel() {
 
   const handleDeleteAreaPlan = async (planId: string) => {
     await runAction(async () => {
-      const nextPlans = savedAreaPlans.filter((plan) => plan.id !== planId);
       const nextActiveId = activeAreaPlanId === planId ? "" : activeAreaPlanId;
-      persistAreaPlans(nextPlans, nextActiveId);
+      await routingService.deleteAreaPlan(planId);
+      await loadAreaPlans(nextActiveId);
       setOkMessage("Plan por area eliminado.");
     });
   };
@@ -464,13 +406,6 @@ export function RoutingPanel() {
     });
   };
 
-  const rememberPlanId = (planId: string) => {
-    setLastPlanId(planId);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(LAST_ROUTING_PLAN_ID_KEY, planId);
-    }
-  };
-
   const handleSimulate = async () => {
     await runAction(async () => {
       const overrideRules = await buildFastAssignmentPayload();
@@ -483,9 +418,7 @@ export function RoutingPanel() {
       });
       setSimulation(response);
       setSelectedCrewId(response.routes?.[0]?.crewId ?? "");
-      if (response.savedPlanId) {
-        rememberPlanId(response.savedPlanId);
-      }
+      if (response.savedPlanId) rememberPlanId(response.savedPlanId);
       setOkMessage("Simulacion ejecutada correctamente.");
     });
   };
@@ -503,9 +436,7 @@ export function RoutingPanel() {
       });
       setSimulation(response);
       setSelectedCrewId(response.routes?.[0]?.crewId ?? "");
-      if (response.savedPlanId) {
-        rememberPlanId(response.savedPlanId);
-      }
+      if (response.savedPlanId) rememberPlanId(response.savedPlanId);
       setOkMessage(`Plan generado. ID: ${response.savedPlanId ?? "sin id"}`);
     });
   };
@@ -535,12 +466,11 @@ export function RoutingPanel() {
       });
       setSimulation(generated);
       setSelectedCrewId(generated.routes?.[0]?.crewId ?? "");
-      const planId = generated.savedPlanId;
-      if (!planId) {
+      if (!generated.savedPlanId) {
         throw new Error("No se pudo obtener planId al generar.");
       }
-      rememberPlanId(planId);
-      const confirmation = await routingService.confirmPlan(planId);
+      rememberPlanId(generated.savedPlanId);
+      const confirmation = await routingService.confirmPlan(generated.savedPlanId);
       setOkMessage(`Plan generado y confirmado. ${confirmation.message}`);
     });
   };
@@ -556,19 +486,13 @@ export function RoutingPanel() {
         <div className={styles.formSection}>
           <h4 className={styles.sectionTitle}>Modulo 1: Planes por area</h4>
           <p className={styles.subtle}>
-            Aqui defines y guardas planes reutilizables. Luego eliges uno en el modulo de rutas para generar el recorrido.
+            Aqui defines y guardas planes reutilizables en backend. Luego eliges uno en el modulo de rutas para generar el recorrido.
           </p>
 
           <div className={styles.fieldGrid}>
             <label className={styles.field} htmlFor="plan-name">
               <span>Nombre del plan</span>
-              <input
-                id="plan-name"
-                type="text"
-                value={planName}
-                onChange={(e) => setPlanName(e.target.value)}
-                placeholder="Ej: Plan Alumbrado Norte"
-              />
+              <input id="plan-name" type="text" value={planName} onChange={(e) => setPlanName(e.target.value)} placeholder="Ej: Plan Alumbrado Norte" />
             </label>
           </div>
 
@@ -579,12 +503,7 @@ export function RoutingPanel() {
             ) : (
               <label className={styles.field} htmlFor="agent-user-id">
                 <span>Usuario operativo</span>
-                <select
-                  id="agent-user-id"
-                  className={styles.select}
-                  value={selectedOperationalUserId}
-                  onChange={(e) => setSelectedOperationalUserId(e.target.value)}
-                >
+                <select id="agent-user-id" className={styles.select} value={selectedOperationalUserId} onChange={(e) => setSelectedOperationalUserId(e.target.value)}>
                   {operationalUsers.map((user) => (
                     <option key={user.id} value={user.id}>
                       {user.name || user.email}
@@ -607,9 +526,7 @@ export function RoutingPanel() {
                       checked={checked}
                       onChange={(e) => {
                         setSelectedCategorias((current) =>
-                          e.target.checked
-                            ? [...current, categoria]
-                            : current.filter((item) => item !== categoria),
+                          e.target.checked ? [...current, categoria] : current.filter((item) => item !== categoria),
                         );
                       }}
                     />
@@ -623,13 +540,7 @@ export function RoutingPanel() {
           <div className={styles.fieldGrid}>
             <label className={styles.field} htmlFor="origin-query">
               <span>Buscar punto de origen por direccion</span>
-              <input
-                id="origin-query"
-                type="text"
-                value={originQuery}
-                onChange={(e) => setOriginQuery(e.target.value)}
-                placeholder="Ej: Av. Corrientes 1000, Buenos Aires"
-              />
+              <input id="origin-query" type="text" value={originQuery} onChange={(e) => setOriginQuery(e.target.value)} placeholder="Ej: Av. Corrientes 1000, Buenos Aires" />
             </label>
           </div>
 
@@ -697,9 +608,7 @@ export function RoutingPanel() {
           </div>
 
           <div className={styles.mapWrap}>
-            {originMapUrl && (
-              <iframe title="Mapa de punto de origen" src={originMapUrl} loading="lazy" referrerPolicy="no-referrer-when-downgrade" allowFullScreen />
-            )}
+            {originMapUrl && <iframe title="Mapa de punto de origen" src={originMapUrl} loading="lazy" referrerPolicy="no-referrer-when-downgrade" allowFullScreen />}
           </div>
         </div>
 
@@ -835,6 +744,7 @@ export function RoutingPanel() {
                   </div>
                 ))}
               </div>
+
               <div className={styles.tableWrap}>
                 <table className={styles.table}>
                   <thead>
