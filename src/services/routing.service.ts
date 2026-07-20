@@ -11,7 +11,9 @@ export interface RoutingCategoryRule {
 
 export interface RoutingCrewRule {
   crewId: string;
+  userId?: string;
   nombre?: string;
+  userName?: string;
   maxReclamosDiarios: number;
   allowedCategorias: ReclamoCategoria[];
   allowedZoneIds?: string[];

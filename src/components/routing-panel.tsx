@@ -16,8 +16,10 @@ const DEFAULT_RULES: UpsertRoutingRulesPayload = {
   ],
   crews: [
     {
-      crewId: "cuadrilla-norte",
-      nombre: "Cuadrilla Norte",
+      crewId: "usuario-operativo-norte",
+      userId: "usuario-operativo-norte",
+      nombre: "Usuario Operativo Norte",
+      userName: "Usuario Operativo Norte",
       maxReclamosDiarios: 15,
       allowedCategorias: ["alumbrado", "baches_y_pavimento"],
       allowedZoneIds: ["zona-norte"],
@@ -55,6 +57,14 @@ export function RoutingPanel() {
   const [selectedCrewId, setSelectedCrewId] = useState<string>("");
   const [categoryQuotaByKey, setCategoryQuotaByKey] = useState<Record<string, number>>({});
   const [crewQuotaByKey, setCrewQuotaByKey] = useState<Record<string, number>>({});
+
+  const humanizeReason = (reason: string): string => {
+    const dictionary: Record<string, string> = {
+      category_quota_reached: "Cupo de categoria alcanzado",
+      no_eligible_crew: "Sin usuario operativo elegible",
+    };
+    return dictionary[reason] ?? reason;
+  };
 
   const topStops = useMemo(() => {
     if (!simulation) return [];
@@ -365,15 +375,33 @@ export function RoutingPanel() {
       <article className={styles.card}>
         <div className={styles.head}>
           <h2>Ruteo operativo</h2>
-          <span>Reglas, simulacion, generacion y confirmacion de plan</span>
+          <span>Configuracion, simulacion y confirmacion del plan</span>
         </div>
 
-        <p className={styles.subtle}>
-          Configuracion basica: define un origen global y cupos diarios. Eso se replica en reglas por cuadrilla y por categoria para simplificar la operacion.
-        </p>
+        <div className={styles.guideGrid}>
+          <div className={styles.guideItem}>
+            <strong>1) Configuracion base</strong>
+            <p>Define origen geografico y cupos globales para comenzar rapido.</p>
+          </div>
+          <div className={styles.guideItem}>
+            <strong>2) Ajuste por usuario y categoria</strong>
+            <p>Refina cupos individuales para cada usuario operativo y categoria.</p>
+          </div>
+          <div className={styles.guideItem}>
+            <strong>3) Simulacion</strong>
+            <p>Valida asignaciones antes de guardar el plan definitivo.</p>
+          </div>
+          <div className={styles.guideItem}>
+            <strong>4) Generacion y confirmacion</strong>
+            <p>Genera plan persistido y confirma para iniciar ejecucion operativa.</p>
+          </div>
+        </div>
 
         <div className={styles.formSection}>
           <h4 className={styles.sectionTitle}>Configuracion basica</h4>
+          <p className={styles.subtle}>
+            Esta seccion aplica valores generales a todas las reglas: punto de salida comun y cupos diarios por defecto.
+          </p>
           <div className={styles.fieldGrid}>
             <label className={styles.field} htmlFor="origin-query">
               <span>Buscar punto de origen por direccion</span>
@@ -422,7 +450,7 @@ export function RoutingPanel() {
             </label>
 
             <label className={styles.field} htmlFor="daily-by-user">
-              <span>Reclamos diarios por usuario/cuadrilla</span>
+              <span>Reclamos diarios por usuario operativo</span>
               <input
                 id="daily-by-user"
                 type="number"
@@ -466,9 +494,9 @@ export function RoutingPanel() {
         </div>
 
         <div className={styles.formSection}>
-          <h4 className={styles.sectionTitle}>Cupos individuales por categoria y cuadrilla</h4>
+          <h4 className={styles.sectionTitle}>Cupos individuales por categoria y usuario</h4>
           <p className={styles.subtle}>
-            Aqui puedes definir un cupo distinto para cada categoria y para cada usuario/cuadrilla.
+            Aqui puedes definir cupos especificos para cada categoria y cada usuario operativo.
           </p>
 
           {!rules && (
@@ -515,14 +543,14 @@ export function RoutingPanel() {
                 <table className={styles.table}>
                   <thead>
                     <tr>
-                      <th>Cuadrilla / usuario</th>
+                      <th>Usuario operativo</th>
                       <th>Cupo diario</th>
                     </tr>
                   </thead>
                   <tbody>
                     {rules.data.crews.map((crew) => (
                       <tr key={crew.crewId}>
-                        <td>{crew.nombre || crew.crewId}</td>
+                        <td>{crew.userName || crew.nombre || crew.userId || crew.crewId}</td>
                         <td>
                           <input
                             className={styles.inlineInput}
@@ -554,6 +582,9 @@ export function RoutingPanel() {
 
         <div className={styles.formSection}>
           <h4 className={styles.sectionTitle}>Ejecucion de ruteo</h4>
+          <p className={styles.subtle}>
+            Ejecuta simulaciones para validar elegibilidad y cupos. Cuando el resultado sea correcto, genera y confirma el plan.
+          </p>
 
           <div className={styles.fieldGrid}>
             <label className={styles.field} htmlFor="max-fetch">
@@ -629,11 +660,11 @@ export function RoutingPanel() {
           <div className={styles.head}>
             <h3>Reglas vigentes</h3>
             <span>
-              {rules.data.categoryRules.length} categorias · {rules.data.crews.length} cuadrillas · {rules.data.zones.length} zonas
+              {rules.data.categoryRules.length} categorias · {rules.data.crews.length} usuarios operativos · {rules.data.zones.length} zonas
             </span>
           </div>
           <p className={styles.subtle}>
-            Las reglas configuradas aqui se usan para decidir cupos por categoria y elegibilidad por cuadrilla/zona.
+            Las reglas configuradas aqui se usan para decidir cupos por categoria y elegibilidad por usuario/zona.
           </p>
         </article>
       )}
@@ -672,7 +703,7 @@ export function RoutingPanel() {
             <table className={styles.table}>
               <thead>
                 <tr>
-                  <th>Cuadrilla</th>
+                  <th>Usuario operativo</th>
                   <th>Sec.</th>
                   <th>Reclamo</th>
                   <th>Categoria</th>
@@ -700,6 +731,23 @@ export function RoutingPanel() {
             </table>
           </div>
 
+          {Object.keys(simulation.summary.unassignedByReason).length > 0 && (
+            <div className={styles.formSection}>
+              <h4 className={styles.sectionTitle}>Diagnostico de no asignacion</h4>
+              <p className={styles.subtle}>
+                Este resumen ayuda a entender por que algunos reclamos no entraron en la ruta.
+              </p>
+              <div className={styles.grid}>
+                {Object.entries(simulation.summary.unassignedByReason).map(([reason, count]) => (
+                  <div key={reason} className={styles.metric}>
+                    <span>{humanizeReason(reason)}</span>
+                    <strong>{count}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className={styles.routePickerWrap}>
             <label htmlFor="route-picker" className={styles.subtle}>
               Ruta a visualizar
@@ -721,8 +769,8 @@ export function RoutingPanel() {
           {selectedRoute && (
             <div className={styles.grid}>
               <div className={styles.metric}>
-                <span>Cuadrilla</span>
-                <strong>{selectedRoute.nombre}</strong>
+                <span>Usuario operativo</span>
+                <strong>{selectedRoute.nombre || selectedRoute.crewId}</strong>
               </div>
               <div className={styles.metric}>
                 <span>Paradas</span>

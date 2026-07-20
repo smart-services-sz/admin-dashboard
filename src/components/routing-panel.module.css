@@ -45,6 +45,30 @@
   gap: 10px;
 }
 
+.guideGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.guideItem {
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: var(--bg-surface-subtle);
+  padding: 10px;
+  display: grid;
+  gap: 4px;
+}
+
+.guideItem strong {
+  font-size: 0.86rem;
+}
+
+.guideItem p {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
 .sectionTitle {
   font-family: var(--font-space-grotesk), "Segoe UI", sans-serif;
   font-size: 0.95rem;
