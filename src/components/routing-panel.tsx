@@ -41,6 +41,8 @@ const DEFAULT_RULES: UpsertRoutingRulesPayload = {
   ],
 };
 
+const LAST_ROUTING_PLAN_ID_KEY = "routing:lastPlanId";
+
 export function RoutingPanel() {
   const [maxFetch, setMaxFetch] = useState(200);
   const [useGoogleOptimization, setUseGoogleOptimization] = useState(true);
@@ -70,23 +72,42 @@ export function RoutingPanel() {
   };
 
   useEffect(() => {
-    const loadOperationalUsers = async () => {
+    const loadInitialRoutingState = async () => {
       try {
-        const response = await accessControlService.getActiveUsersByRole("AGENT");
-        const agentUsers = response.data;
+        const [usersResponse, rulesResponse] = await Promise.all([
+          accessControlService.getActiveUsersByRole("AGENT"),
+          routingService.getRules(),
+        ]);
+        const agentUsers = usersResponse.data;
 
         setOperationalUsers(agentUsers);
-        setSelectedOperationalUserId((current) =>
-          current && agentUsers.some((user) => user.id === current)
-            ? current
-            : (agentUsers[0]?.id ?? ""),
-        );
+        setRules(rulesResponse);
+        setSelectedOperationalUserId((current) => {
+          if (current && agentUsers.some((user) => user.id === current)) {
+            return current;
+          }
+
+          const persistedAssigneeId = rulesResponse.data.crews[0]?.userId ?? rulesResponse.data.crews[0]?.crewId;
+          if (persistedAssigneeId && agentUsers.some((user) => user.id === persistedAssigneeId)) {
+            return persistedAssigneeId;
+          }
+
+          return agentUsers[0]?.id ?? "";
+        });
+        hydrateFormFromRules(rulesResponse.data, agentUsers);
+
+        if (typeof window !== "undefined") {
+          const savedPlanId = window.localStorage.getItem(LAST_ROUTING_PLAN_ID_KEY);
+          if (savedPlanId) {
+            setLastPlanId(savedPlanId);
+          }
+        }
       } catch {
         // Non-blocking: routing config can still work with existing persisted rules.
       }
     };
 
-    void loadOperationalUsers();
+    void loadInitialRoutingState();
   }, []);
 
   const topStops = useMemo(() => {
@@ -184,6 +205,34 @@ export function RoutingPanel() {
       maxLng: zone.maxLng,
     }));
 
+  const hydrateFormFromRules = (
+    source: RoutingRulesResponse["data"],
+    agentUsers: ManagedUser[] = operationalUsers,
+  ) => {
+    if (source.categoryRules.length > 0) {
+      setSelectedCategorias(source.categoryRules.map((rule) => rule.categoria));
+      setDailyByCategory(source.categoryRules[0].cupoDiario);
+    }
+
+    if (source.crews.length > 0) {
+      const firstCrew = source.crews[0];
+      setDailyByUser(firstCrew.maxReclamosDiarios);
+
+      if (typeof firstCrew.startLat === "number") {
+        setOriginLat(firstCrew.startLat);
+      }
+
+      if (typeof firstCrew.startLng === "number") {
+        setOriginLng(firstCrew.startLng);
+      }
+
+      const assigneeId = firstCrew.userId ?? firstCrew.crewId;
+      if (assigneeId && agentUsers.some((user) => user.id === assigneeId)) {
+        setSelectedOperationalUserId(assigneeId);
+      }
+    }
+  };
+
   const runAction = async (task: () => Promise<void>) => {
     setLoading(true);
     setError(null);
@@ -202,6 +251,7 @@ export function RoutingPanel() {
     await runAction(async () => {
       const response = await routingService.getRules();
       setRules(response);
+      hydrateFormFromRules(response.data);
       setSelectedCategorias((current) =>
         current.length > 0
           ? current.filter((categoria) =>
@@ -339,6 +389,9 @@ export function RoutingPanel() {
       setSelectedCrewId(response.routes?.[0]?.crewId ?? "");
       if (response.savedPlanId) {
         setLastPlanId(response.savedPlanId);
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(LAST_ROUTING_PLAN_ID_KEY, response.savedPlanId);
+        }
       }
       setOkMessage("Simulacion ejecutada correctamente.");
     });
@@ -360,6 +413,9 @@ export function RoutingPanel() {
       setSelectedCrewId(response.routes?.[0]?.crewId ?? "");
       if (response.savedPlanId) {
         setLastPlanId(response.savedPlanId);
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(LAST_ROUTING_PLAN_ID_KEY, response.savedPlanId);
+        }
       }
       setOkMessage(`Plan generado. ID: ${response.savedPlanId ?? "sin id"}`);
     });
@@ -398,6 +454,9 @@ export function RoutingPanel() {
       }
 
       setLastPlanId(planId);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(LAST_ROUTING_PLAN_ID_KEY, planId);
+      }
       const confirmation = await routingService.confirmPlan(planId);
       setOkMessage(`Plan generado y confirmado. ${confirmation.message}`);
     });
