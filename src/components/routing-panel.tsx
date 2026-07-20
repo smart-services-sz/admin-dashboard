@@ -5,6 +5,7 @@ import {
   routingService,
   type RoutingRulesResponse,
   type RoutingSimulationResult,
+  type RoutingZoneRule,
   type UpsertRoutingRulesPayload,
 } from "@/services/routing.service";
 import { accessControlService, type ManagedUser } from "@/services/access-control.service";
@@ -173,6 +174,16 @@ export function RoutingPanel() {
     [rules],
   );
 
+  const sanitizeZones = (zones: RoutingZoneRule[]) =>
+    zones.map((zone) => ({
+      id: zone.id,
+      nombre: zone.nombre,
+      minLat: zone.minLat,
+      maxLat: zone.maxLat,
+      minLng: zone.minLng,
+      maxLng: zone.maxLng,
+    }));
+
   const runAction = async (task: () => Promise<void>) => {
     setLoading(true);
     setError(null);
@@ -299,7 +310,7 @@ export function RoutingPanel() {
           startLng: originLng,
         },
       ],
-      zones: seedSource.zones,
+      zones: sanitizeZones(seedSource.zones ?? []),
     };
   };
 
