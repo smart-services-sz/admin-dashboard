@@ -74,7 +74,27 @@ export function RoutingPanel() {
       try {
         const response = await accessControlService.getUsers();
         const activeUsers = response.data.filter((user) => user.isActive);
-        setOperationalUsers(activeUsers);
+        const withRoleInfo = await Promise.all(
+          activeUsers.map(async (user) => {
+            try {
+              const roles = await accessControlService.getUserRoles(user.id);
+              return { user, roles };
+            } catch {
+              return { user, roles: [] };
+            }
+          }),
+        );
+
+        const agentUsers = withRoleInfo
+          .filter(({ roles }) =>
+            roles.some((role) => role.name.trim().toUpperCase() === "AGENT"),
+          )
+          .map(({ user }) => user);
+
+        setOperationalUsers(agentUsers);
+        setSelectedOperationalUserIds((current) =>
+          current.filter((id) => agentUsers.some((user) => user.id === id)),
+        );
       } catch {
         // Non-blocking: routing config can still work with existing persisted rules.
       }
@@ -445,10 +465,12 @@ export function RoutingPanel() {
           <div className={styles.formSection}>
             <h5 className={styles.sectionTitle}>Usuarios operativos para asignacion</h5>
             <p className={styles.subtle}>
-              Selecciona los usuarios que podran recibir rutas. Si no seleccionas ninguno, se usan los usuarios ya guardados en las reglas.
+              Selecciona usuarios activos con rol AGENT. Si no seleccionas ninguno, se usan los usuarios ya guardados en las reglas.
             </p>
             {operationalUsers.length === 0 ? (
-              <p className={styles.subtle}>No se pudieron cargar usuarios activos o no hay usuarios disponibles.</p>
+              <p className={styles.subtle}>
+                No hay usuarios activos con rol AGENT disponibles para asignacion.
+              </p>
             ) : (
               <div className={styles.grid}>
                 {operationalUsers.map((user) => (
