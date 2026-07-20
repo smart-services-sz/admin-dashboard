@@ -56,10 +56,9 @@ export function RoutingPanel() {
   const [simulation, setSimulation] = useState<RoutingSimulationResult | null>(null);
   const [lastPlanId, setLastPlanId] = useState<string>("");
   const [selectedCrewId, setSelectedCrewId] = useState<string>("");
-  const [categoryQuotaByKey, setCategoryQuotaByKey] = useState<Record<string, number>>({});
-  const [crewQuotaByKey, setCrewQuotaByKey] = useState<Record<string, number>>({});
   const [operationalUsers, setOperationalUsers] = useState<ManagedUser[]>([]);
-  const [selectedOperationalUserIds, setSelectedOperationalUserIds] = useState<string[]>([]);
+  const [selectedOperationalUserId, setSelectedOperationalUserId] = useState<string>("");
+  const [selectedCategorias, setSelectedCategorias] = useState<string[]>([]);
 
   const humanizeReason = (reason: string): string => {
     const dictionary: Record<string, string> = {
@@ -76,8 +75,10 @@ export function RoutingPanel() {
         const agentUsers = response.data;
 
         setOperationalUsers(agentUsers);
-        setSelectedOperationalUserIds((current) =>
-          current.filter((id) => agentUsers.some((user) => user.id === id)),
+        setSelectedOperationalUserId((current) =>
+          current && agentUsers.some((user) => user.id === current)
+            ? current
+            : (agentUsers[0]?.id ?? ""),
         );
       } catch {
         // Non-blocking: routing config can still work with existing persisted rules.
@@ -164,14 +165,13 @@ export function RoutingPanel() {
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(coordinateQuery)}`;
   }, [originLat, originLng]);
 
-  const hydrateQuotaEditors = (source: RoutingRulesResponse["data"]) => {
-    setCategoryQuotaByKey(
-      Object.fromEntries(source.categoryRules.map((rule) => [rule.categoria, rule.cupoDiario])),
-    );
-    setCrewQuotaByKey(
-      Object.fromEntries(source.crews.map((crew) => [crew.crewId, crew.maxReclamosDiarios])),
-    );
-  };
+  const categoryOptions = useMemo(
+    () =>
+      (rules?.data.categoryRules.length ? rules.data.categoryRules : DEFAULT_RULES.categoryRules).map(
+        (rule) => rule.categoria,
+      ),
+    [rules],
+  );
 
   const runAction = async (task: () => Promise<void>) => {
     setLoading(true);
@@ -191,18 +191,14 @@ export function RoutingPanel() {
     await runAction(async () => {
       const response = await routingService.getRules();
       setRules(response);
-      hydrateQuotaEditors(response.data);
+      setSelectedCategorias((current) =>
+        current.length > 0
+          ? current.filter((categoria) =>
+              response.data.categoryRules.some((rule) => rule.categoria === categoria),
+            )
+          : [],
+      );
       setOkMessage("Reglas de ruteo cargadas.");
-    });
-  };
-
-  const handleSeedRules = async () => {
-    await runAction(async () => {
-      await routingService.upsertRules(DEFAULT_RULES);
-      const response = await routingService.getRules();
-      setRules(response);
-      hydrateQuotaEditors(response.data);
-      setOkMessage("Reglas base aplicadas y recargadas.");
     });
   };
 
@@ -250,97 +246,70 @@ export function RoutingPanel() {
     });
   };
 
-  const handleApplyBasicConfig = async () => {
-    await runAction(async () => {
-      if (!Number.isFinite(originLat) || !Number.isFinite(originLng)) {
-        throw new Error("Define un origen valido (lat/lng)");
-      }
+  const buildFastAssignmentPayload = async (): Promise<UpsertRoutingRulesPayload> => {
+    if (!Number.isFinite(originLat) || !Number.isFinite(originLng)) {
+      throw new Error("Define un origen valido (lat/lng)");
+    }
 
-      const baseRules =
-        rules?.data ??
-        (await routingService.getRules()).data ?? {
-          categoryRules: [],
-          crews: [],
-          zones: [],
-        };
+    if (!selectedOperationalUserId) {
+      throw new Error("Selecciona un usuario AGENT para asignar la ruta.");
+    }
 
-      const seedSource =
-        baseRules.categoryRules.length > 0 && baseRules.crews.length > 0
-          ? baseRules
-          : DEFAULT_RULES;
+    const selectedUser = operationalUsers.find((user) => user.id === selectedOperationalUserId);
+    if (!selectedUser) {
+      throw new Error("El usuario AGENT seleccionado no esta disponible.");
+    }
 
-      const selectedUsers = operationalUsers.filter((user) => selectedOperationalUserIds.includes(user.id));
-
-      const usersBasedCrews = selectedUsers.map((user) => ({
-        crewId: user.id,
-        userId: user.id,
-        nombre: user.name || user.email,
-        userName: user.name || user.email,
-        maxReclamosDiarios: dailyByUser,
-        allowedCategorias: seedSource.categoryRules.map((rule) => rule.categoria),
-        allowedZoneIds: seedSource.zones?.map((zone) => zone.id) ?? [],
-        startLat: originLat,
-        startLng: originLng,
-      }));
-
-      const fallbackCrews = seedSource.crews.map((crew) => ({
-        ...crew,
-        userId: crew.userId ?? crew.crewId,
-        userName: crew.userName ?? crew.nombre ?? crew.crewId,
-        maxReclamosDiarios: dailyByUser,
-        startLat: originLat,
-        startLng: originLng,
-      }));
-
-      const payload: UpsertRoutingRulesPayload = {
-        categoryRules: seedSource.categoryRules.map((rule) => ({
-          ...rule,
-          cupoDiario: dailyByCategory,
-        })),
-        crews: usersBasedCrews.length > 0 ? usersBasedCrews : fallbackCrews,
-        zones: seedSource.zones,
+    const baseRules =
+      rules?.data ??
+      (await routingService.getRules()).data ?? {
+        categoryRules: [],
+        crews: [],
+        zones: [],
       };
 
-      await routingService.upsertRules(payload);
-      const refreshed = await routingService.getRules();
-      setRules(refreshed);
-      hydrateQuotaEditors(refreshed.data);
-      setOkMessage(
-        usersBasedCrews.length > 0
-          ? "Configuracion aplicada con usuarios operativos seleccionados."
-          : "Configuracion basica aplicada: origen + cupos diarios por usuario/categoria.",
-      );
-    });
+    const seedSource =
+      baseRules.categoryRules.length > 0 && baseRules.zones.length > 0
+        ? baseRules
+        : DEFAULT_RULES;
+
+    const effectiveCategoryRules = seedSource.categoryRules
+      .filter((rule) => selectedCategorias.length === 0 || selectedCategorias.includes(rule.categoria))
+      .map((rule) => ({
+        ...rule,
+        cupoDiario: dailyByCategory,
+      }));
+
+    if (effectiveCategoryRules.length === 0) {
+      throw new Error("Selecciona al menos una categoria para el plan.");
+    }
+
+    return {
+      categoryRules: effectiveCategoryRules,
+      crews: [
+        {
+          crewId: selectedUser.id,
+          userId: selectedUser.id,
+          nombre: selectedUser.name || selectedUser.email,
+          userName: selectedUser.name || selectedUser.email,
+          maxReclamosDiarios: dailyByUser,
+          allowedCategorias: effectiveCategoryRules.map((rule) => rule.categoria),
+          allowedZoneIds: seedSource.zones?.map((zone) => zone.id) ?? [],
+          startLat: originLat,
+          startLng: originLng,
+        },
+      ],
+      zones: seedSource.zones,
+    };
   };
 
-  const handleSaveSpecificQuotas = async () => {
+  const handleApplyBasicConfig = async () => {
     await runAction(async () => {
-      const current = rules?.data ?? (await routingService.getRules()).data;
-
-      if (!current.categoryRules.length || !current.crews.length) {
-        throw new Error("Primero debes tener reglas cargadas para editar cupos individuales.");
-      }
-
-      const payload: UpsertRoutingRulesPayload = {
-        categoryRules: current.categoryRules.map((rule) => ({
-          ...rule,
-          cupoDiario: Math.max(1, Number(categoryQuotaByKey[rule.categoria] ?? rule.cupoDiario)),
-        })),
-        crews: current.crews.map((crew) => ({
-          ...crew,
-          maxReclamosDiarios: Math.max(
-            1,
-            Number(crewQuotaByKey[crew.crewId] ?? crew.maxReclamosDiarios),
-          ),
-        })),
-        zones: current.zones,
-      };
-
+      const payload = await buildFastAssignmentPayload();
       await routingService.upsertRules(payload);
       const refreshed = await routingService.getRules();
       setRules(refreshed);
-      hydrateQuotaEditors(refreshed.data);
-      setOkMessage("Cupos individuales por categoria/cuadrilla guardados.");
+      setOkMessage("Configuracion rapida aplicada: usuario AGENT + categorias + cupos.");
     });
   };
 
@@ -392,6 +361,9 @@ export function RoutingPanel() {
 
   const handleGenerateAndConfirm = async () => {
     await runAction(async () => {
+      const payload = await buildFastAssignmentPayload();
+      await routingService.upsertRules(payload);
+
       const generated = await routingService.generate({
         maxFetch,
         useGoogleOptimization,
@@ -418,63 +390,69 @@ export function RoutingPanel() {
       <article className={styles.card}>
         <div className={styles.head}>
           <h2>Ruteo operativo</h2>
-          <span>Configuracion, simulacion y confirmacion del plan</span>
-        </div>
-
-        <div className={styles.guideGrid}>
-          <div className={styles.guideItem}>
-            <strong>1) Configuracion base</strong>
-            <p>Define origen geografico y cupos globales para comenzar rapido.</p>
-          </div>
-          <div className={styles.guideItem}>
-            <strong>2) Ajuste por usuario y categoria</strong>
-            <p>Refina cupos individuales para cada usuario operativo y categoria.</p>
-          </div>
-          <div className={styles.guideItem}>
-            <strong>3) Simulacion</strong>
-            <p>Valida asignaciones antes de guardar el plan definitivo.</p>
-          </div>
-          <div className={styles.guideItem}>
-            <strong>4) Generacion y confirmacion</strong>
-            <p>Genera plan persistido y confirma para iniciar ejecucion operativa.</p>
-          </div>
+          <span>Asignacion rapida de rutas a un usuario AGENT</span>
         </div>
 
         <div className={styles.formSection}>
-          <h4 className={styles.sectionTitle}>Configuracion basica</h4>
+          <h4 className={styles.sectionTitle}>Configuracion rapida</h4>
           <p className={styles.subtle}>
-            Esta seccion aplica valores generales a todas las reglas: punto de salida comun y cupos diarios por defecto.
+            Flujo recomendado: elige un AGENT, marca categorias, define origen y cupos, y luego genera/confirmar plan.
           </p>
 
           <div className={styles.formSection}>
-            <h5 className={styles.sectionTitle}>Usuarios operativos para asignacion</h5>
+            <h5 className={styles.sectionTitle}>Usuario AGENT para asignacion</h5>
             <p className={styles.subtle}>
-              Selecciona usuarios activos con rol AGENT. Si no seleccionas ninguno, se usan los usuarios ya guardados en las reglas.
+              Solo se listan usuarios activos con rol AGENT.
             </p>
             {operationalUsers.length === 0 ? (
               <p className={styles.subtle}>
                 No hay usuarios activos con rol AGENT disponibles para asignacion.
               </p>
             ) : (
-              <div className={styles.grid}>
-                {operationalUsers.map((user) => (
-                  <label key={user.id} className={styles.checkbox}>
+              <label className={styles.field} htmlFor="agent-user-id">
+                <span>Usuario operativo</span>
+                <select
+                  id="agent-user-id"
+                  className={styles.select}
+                  value={selectedOperationalUserId}
+                  onChange={(e) => setSelectedOperationalUserId(e.target.value)}
+                >
+                  {operationalUsers.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.name || user.email}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </div>
+
+          <div className={styles.formSection}>
+            <h5 className={styles.sectionTitle}>Areas de reclamo (categorias)</h5>
+            <p className={styles.subtle}>
+              Marca las categorias para este plan. Si no marcas ninguna, se consideran todas.
+            </p>
+            <div className={styles.grid}>
+              {categoryOptions.map((categoria) => {
+                const checked = selectedCategorias.includes(categoria);
+                return (
+                  <label key={categoria} className={styles.checkbox}>
                     <input
                       type="checkbox"
-                      checked={selectedOperationalUserIds.includes(user.id)}
+                      checked={checked}
                       onChange={(e) => {
-                        setSelectedOperationalUserIds((current) =>
+                        setSelectedCategorias((current) =>
                           e.target.checked
-                            ? [...current, user.id]
-                            : current.filter((item) => item !== user.id),
+                            ? [...current, categoria]
+                            : current.filter((item) => item !== categoria),
                         );
                       }}
                     />
-                    <span>{user.name || user.email}</span>
+                    <span>{categoria}</span>
                   </label>
-                ))}
-              </div>
-            )}
+                );
+              })}
+            </div>
           </div>
 
           <div className={styles.fieldGrid}>
@@ -551,7 +529,7 @@ export function RoutingPanel() {
 
           <div className={styles.actionsRow}>
             <button className={styles.buttonSecondary} type="button" onClick={handleApplyBasicConfig} disabled={loading}>
-              Aplicar configuracion basica
+              Aplicar configuracion rapida
             </button>
           </div>
 
@@ -569,96 +547,9 @@ export function RoutingPanel() {
         </div>
 
         <div className={styles.formSection}>
-          <h4 className={styles.sectionTitle}>Cupos individuales por categoria y usuario</h4>
-          <p className={styles.subtle}>
-            Aqui puedes definir cupos especificos para cada categoria y cada usuario operativo.
-          </p>
-
-          {!rules && (
-            <p className={styles.subtle}>
-              Carga reglas primero con "Ver reglas" o "Cargar reglas base" para editar cupos individuales.
-            </p>
-          )}
-
-          {rules && (
-            <>
-              <div className={styles.tableWrap}>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>Categoria</th>
-                      <th>Cupo diario</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rules.data.categoryRules.map((rule) => (
-                      <tr key={rule.categoria}>
-                        <td>{rule.categoria}</td>
-                        <td>
-                          <input
-                            className={styles.inlineInput}
-                            type="number"
-                            min={1}
-                            value={categoryQuotaByKey[rule.categoria] ?? rule.cupoDiario}
-                            onChange={(e) =>
-                              setCategoryQuotaByKey((prev) => ({
-                                ...prev,
-                                [rule.categoria]: Number(e.target.value || 1),
-                              }))
-                            }
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className={styles.tableWrap}>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>Usuario operativo</th>
-                      <th>Cupo diario</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rules.data.crews.map((crew) => (
-                      <tr key={crew.crewId}>
-                        <td>{crew.userName || crew.nombre || crew.userId || crew.crewId}</td>
-                        <td>
-                          <input
-                            className={styles.inlineInput}
-                            type="number"
-                            min={1}
-                            value={crewQuotaByKey[crew.crewId] ?? crew.maxReclamosDiarios}
-                            onChange={(e) =>
-                              setCrewQuotaByKey((prev) => ({
-                                ...prev,
-                                [crew.crewId]: Number(e.target.value || 1),
-                              }))
-                            }
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className={styles.actionsRow}>
-                <button className={styles.buttonSecondary} type="button" onClick={handleSaveSpecificQuotas} disabled={loading}>
-                  Guardar cupos individuales
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-
-        <div className={styles.formSection}>
           <h4 className={styles.sectionTitle}>Ejecucion de ruteo</h4>
           <p className={styles.subtle}>
-            Ejecuta simulaciones para validar elegibilidad y cupos. Cuando el resultado sea correcto, genera y confirma el plan.
+            Simula para validar y luego genera/confirmar para dejar la ruta asignada al AGENT seleccionado.
           </p>
 
           <div className={styles.fieldGrid}>
@@ -689,9 +580,6 @@ export function RoutingPanel() {
             <button className={styles.buttonSecondary} type="button" onClick={handleLoadRules} disabled={loading}>
               Ver reglas
             </button>
-            <button className={styles.buttonSecondary} type="button" onClick={handleSeedRules} disabled={loading}>
-              Cargar reglas base
-            </button>
             <button className={styles.buttonPrimary} type="button" onClick={handleSimulate} disabled={loading}>
               Simular
             </button>
@@ -699,7 +587,7 @@ export function RoutingPanel() {
               Generar plan
             </button>
             <button className={styles.buttonPrimary} type="button" onClick={handleGenerateAndConfirm} disabled={loading}>
-              Generar y confirmar
+              Aplicar + generar + confirmar
             </button>
           </div>
         </div>
