@@ -72,24 +72,8 @@ export function RoutingPanel() {
   useEffect(() => {
     const loadOperationalUsers = async () => {
       try {
-        const response = await accessControlService.getUsers();
-        const activeUsers = response.data.filter((user) => user.isActive);
-        const withRoleInfo = await Promise.all(
-          activeUsers.map(async (user) => {
-            try {
-              const roles = await accessControlService.getUserRoles(user.id);
-              return { user, roles };
-            } catch {
-              return { user, roles: [] };
-            }
-          }),
-        );
-
-        const agentUsers = withRoleInfo
-          .filter(({ roles }) =>
-            roles.some((role) => role.name.trim().toUpperCase() === "AGENT"),
-          )
-          .map(({ user }) => user);
+        const response = await accessControlService.getActiveUsersByRole("AGENT");
+        const agentUsers = response.data;
 
         setOperationalUsers(agentUsers);
         setSelectedOperationalUserIds((current) =>

@@ -53,23 +53,45 @@ export interface NamePayload {
   name: string;
 }
 
-function withSearch(path: string, search?: string) {
-  if (!search?.trim()) {
-    return `${path}?page=1&limit=100`;
-  }
+function withQuery(path: string, params: Record<string, string | undefined>) {
+  const query = new URLSearchParams();
 
-  const params = new URLSearchParams({
-    page: "1",
-    limit: "100",
-    search: search.trim(),
+  Object.entries(params).forEach(([key, value]) => {
+    if (value && value.trim()) {
+      query.set(key, value.trim());
+    }
   });
 
-  return `${path}?${params.toString()}`;
+  const encoded = query.toString();
+  return encoded ? `${path}?${encoded}` : path;
+}
+
+function withSearch(path: string, search?: string) {
+  if (!search?.trim()) {
+    return withQuery(path, { page: "1", limit: "100" });
+  }
+
+  return withQuery(path, {
+    page: "1",
+    limit: "100",
+    search,
+  });
 }
 
 class AccessControlService {
   getUsers(search?: string) {
     return apiFetch<PaginatedResponse<ManagedUser>>(withSearch(endpoints.users, search));
+  }
+
+  getActiveUsersByRole(roleName: string) {
+    return apiFetch<PaginatedResponse<ManagedUser>>(
+      withQuery(endpoints.users, {
+        page: "1",
+        limit: "100",
+        role: roleName,
+        isActive: "true",
+      }),
+    );
   }
 
   createUser(payload: UserFormPayload) {
