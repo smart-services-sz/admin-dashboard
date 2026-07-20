@@ -141,6 +141,7 @@ export interface RoutingAreaPlan {
   userId: string;
   userName?: string | null;
   categorias: string[];
+  originAddress?: string | null;
   originLat: number;
   originLng: number;
   dailyByUser: number;
@@ -219,6 +220,12 @@ class RoutingService {
   confirmPlan(id: string): Promise<{ status: string; message: string }> {
     return apiFetch<{ status: string; message: string }>(`${BASE}/plans/${id}/confirm`, {
       method: "POST",
+    });
+  }
+
+  deletePlan(id: string): Promise<{ status: string; message: string }> {
+    return apiFetch<{ status: string; message: string }>(`${BASE}/plans/${id}`, {
+      method: "DELETE",
     });
   }
 }

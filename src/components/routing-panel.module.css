@@ -60,6 +60,12 @@
   gap: 4px;
 }
 
+.guideItem[data-active="true"] {
+  border-color: color-mix(in srgb, var(--brand) 55%, var(--line-soft) 45%);
+  background: color-mix(in srgb, var(--bg-surface) 78%, #dff8ee 22%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand) 25%, transparent 75%);
+}
+
 .guideItem strong {
   font-size: 0.86rem;
 }

@@ -5,6 +5,8 @@ import { accessControlService, type ManagedUser } from "@/services/access-contro
 import {
   routingService,
   type RoutingAreaPlan,
+  type RoutingPlanListItem,
+  type RoutingPlanResponse,
   type RoutingRulesResponse,
   type RoutingSimulationResult,
   type RoutingZoneRule,
@@ -45,6 +47,7 @@ export function RoutingRoutesPanel() {
   const [plans, setPlans] = useState<RoutingAreaPlan[]>([]);
   const [agentUsers, setAgentUsers] = useState<ManagedUser[]>([]);
   const [rules, setRules] = useState<RoutingRulesResponse | null>(null);
+  const [routePlans, setRoutePlans] = useState<RoutingPlanListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -92,15 +95,17 @@ export function RoutingRoutesPanel() {
     setError(null);
 
     try {
-      const [plansResponse, usersResponse, rulesResponse] = await Promise.all([
+      const [plansResponse, usersResponse, rulesResponse, routePlansResponse] = await Promise.all([
         routingService.getAreaPlans(),
         accessControlService.getActiveUsersByRole("AGENT"),
         routingService.getRules(),
+        routingService.getPlans(),
       ]);
 
       setPlans(plansResponse.data);
       setAgentUsers(usersResponse.data);
       setRules(rulesResponse);
+      setRoutePlans(routePlansResponse.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo cargar el modulo de rutas.");
     } finally {
@@ -169,6 +174,33 @@ export function RoutingRoutesPanel() {
       zones: sanitizeZones(seedSource.zones ?? []),
     };
   };
+
+  const mapPlanToSimulation = (plan: RoutingPlanResponse["data"]): RoutingSimulationResult => ({
+    status: "ok",
+    generatedAt: plan.planningDate,
+    planningDate: plan.planningDate,
+    summary: {
+      totalFetched: Number((plan.summary.totalFetched as number | undefined) ?? 0),
+      totalCandidateAfterRules: Number((plan.summary.totalCandidateAfterRules as number | undefined) ?? 0),
+      totalAssigned: plan.routes.reduce((acc, route) => acc + route.assignedClaims, 0),
+      totalUnassigned: plan.unassigned.length,
+      unassignedByReason: (plan.summary.unassignedByReason as Record<string, number> | undefined) ?? {},
+      categoryQuotaConsumption: (plan.summary.categoryQuotaConsumption as Record<string, number> | undefined) ?? {},
+      googleOptimization:
+        (plan.summary.googleOptimization as {
+          enabled: boolean;
+          optimizedRoutes: number;
+          failedRoutes: number;
+        } | undefined) ?? {
+          enabled: false,
+          optimizedRoutes: 0,
+          failedRoutes: 0,
+        },
+    },
+    routes: plan.routes,
+    unassigned: plan.unassigned.map((item) => ({ reclamoId: item.reclamoId, reason: item.reason })),
+    savedPlanId: plan.id,
+  });
 
   const handleContinueToLoad = () => {
     if (!selectedPlan) {
@@ -242,6 +274,7 @@ export function RoutingRoutesPanel() {
       setGeneratedPlan(result);
       setSelectedCrewId(result.routes[0]?.crewId ?? "");
       setWizardStep(4);
+      await loadData();
       setOkMessage("Ruta optimizada generada. Revisa el resultado y confirma si esta correcta.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo generar la ruta.");
@@ -262,9 +295,66 @@ export function RoutingRoutesPanel() {
 
     try {
       const result = await routingService.confirmPlan(generatedPlan.savedPlanId);
+      await loadData();
       setOkMessage(result.message || "Plan confirmado.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo confirmar el plan generado.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleOpenGeneratedPlan = async (planId: string) => {
+    setSubmitting(true);
+    setError(null);
+    setOkMessage(null);
+
+    try {
+      const response = await routingService.getPlan(planId);
+      const mapped = mapPlanToSimulation(response.data);
+      setGeneratedPlan(mapped);
+      setSelectedCrewId(mapped.routes[0]?.crewId ?? "");
+      setWizardStep(4);
+      setOkMessage(`Plan cargado: ${response.data.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo abrir el plan generado.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleConfirmExistingPlan = async (planId: string) => {
+    setSubmitting(true);
+    setError(null);
+    setOkMessage(null);
+
+    try {
+      const result = await routingService.confirmPlan(planId);
+      await loadData();
+      setOkMessage(result.message || "Plan confirmado.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo confirmar el plan.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDeleteGeneratedPlan = async (planId: string) => {
+    setSubmitting(true);
+    setError(null);
+    setOkMessage(null);
+
+    try {
+      await routingService.deletePlan(planId);
+      if (generatedPlan?.savedPlanId === planId) {
+        setGeneratedPlan(null);
+        setSelectedCrewId("");
+        setWizardStep(3);
+      }
+      await loadData();
+      setOkMessage("Plan de rutas eliminado.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo eliminar el plan de rutas.");
     } finally {
       setSubmitting(false);
     }
@@ -284,19 +374,19 @@ export function RoutingRoutesPanel() {
         </div>
 
         <div className={styles.guideGrid}>
-          <div className={styles.guideItem}>
+          <div className={styles.guideItem} data-active={wizardStep === 1}>
             <strong>1. Elegir plan</strong>
             <p>Filtra por area y selecciona el plan base.</p>
           </div>
-          <div className={styles.guideItem}>
+          <div className={styles.guideItem} data-active={wizardStep === 2}>
             <strong>2. Cargar reclamos</strong>
             <p>Trae los reclamos candidatos para esa corrida.</p>
           </div>
-          <div className={styles.guideItem}>
+          <div className={styles.guideItem} data-active={wizardStep === 3}>
             <strong>3. Generar ruta</strong>
             <p>Define usuario operativo y optimiza la ruta.</p>
           </div>
-          <div className={styles.guideItem}>
+          <div className={styles.guideItem} data-active={wizardStep === 4}>
             <strong>4. Revisar y confirmar</strong>
             <p>Verifica el resultado antes de confirmarlo.</p>
           </div>
@@ -345,7 +435,7 @@ export function RoutingRoutesPanel() {
               </div>
               <div className={styles.metric}>
                 <span>Origen</span>
-                <strong>{selectedPlan.originLat.toFixed(4)}, {selectedPlan.originLng.toFixed(4)}</strong>
+                <strong>{selectedPlan.originAddress || `${selectedPlan.originLat.toFixed(4)}, ${selectedPlan.originLng.toFixed(4)}`}</strong>
               </div>
               <div className={styles.metric}>
                 <span>Limites</span>
@@ -491,6 +581,64 @@ export function RoutingRoutesPanel() {
             </div>
           </div>
         )}
+      </article>
+
+      <article className={styles.card}>
+        <div className={styles.head}>
+          <div>
+            <h3>Rutas generadas</h3>
+            <span>Listado separado para revisar, confirmar o eliminar rutas generadas por error.</span>
+          </div>
+        </div>
+
+        <div className={styles.tableWrap}>
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Estado</th>
+                <th>Asignados</th>
+                <th>No asignados</th>
+                <th>Rutas</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={6}>Cargando rutas generadas...</td>
+                </tr>
+              ) : routePlans.length === 0 ? (
+                <tr>
+                  <td colSpan={6}>Todavia no hay rutas generadas.</td>
+                </tr>
+              ) : (
+                routePlans.map((plan) => (
+                  <tr key={plan.id}>
+                    <td>{new Date(plan.planningDate).toLocaleString()}</td>
+                    <td>{plan.status}</td>
+                    <td>{plan.totalAssigned}</td>
+                    <td>{plan.totalUnassigned}</td>
+                    <td>{plan.routes.map((route) => `${route.nombre} (${route.assignedClaims})`).join(", ") || "-"}</td>
+                    <td>
+                      <div className={styles.actionsRow}>
+                        <button className={styles.buttonSecondary} type="button" onClick={() => void handleOpenGeneratedPlan(plan.id)} disabled={submitting}>
+                          Ver
+                        </button>
+                        <button className={styles.buttonSecondary} type="button" onClick={() => void handleConfirmExistingPlan(plan.id)} disabled={submitting || plan.status === "confirmed"}>
+                          Confirmar
+                        </button>
+                        <button className={styles.buttonSecondary} type="button" onClick={() => void handleDeleteGeneratedPlan(plan.id)} disabled={submitting}>
+                          Eliminar
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </article>
     </section>
   );

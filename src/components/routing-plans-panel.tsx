@@ -23,6 +23,7 @@ const EMPTY_FORM = {
   name: "",
   userId: "",
   categorias: [] as string[],
+  originAddress: "",
   originLat: -34.55,
   originLng: -58.45,
   dailyByUser: 15,
@@ -37,6 +38,7 @@ function mapPlanToForm(plan: RoutingAreaPlan): PlanFormState {
     name: plan.name,
     userId: plan.userId,
     categorias: plan.categorias,
+    originAddress: plan.originAddress ?? "",
     originLat: plan.originLat,
     originLng: plan.originLng,
     dailyByUser: plan.dailyByUser,
@@ -158,6 +160,7 @@ export function RoutingPlansPanel() {
         userId: form.userId,
         userName: selectedUser?.name ?? selectedUser?.email ?? null,
         categorias: form.categorias,
+        originAddress: form.originAddress.trim() || null,
         originLat: form.originLat,
         originLng: form.originLng,
         dailyByUser: form.dailyByUser,
@@ -169,6 +172,60 @@ export function RoutingPlansPanel() {
       closeModal();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo guardar el plan.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleGeocodeOrigin = async () => {
+    if (!form.originAddress.trim()) {
+      setError("Ingresa una direccion completa para buscar el origen.");
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+    setOkMessage(null);
+
+    try {
+      const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+      if (!key) {
+        throw new Error("Falta NEXT_PUBLIC_GOOGLE_MAPS_API_KEY en admin-dashboard.");
+      }
+
+      const url =
+        "https://maps.googleapis.com/maps/api/geocode/json?" +
+        `address=${encodeURIComponent(form.originAddress.trim())}&key=${encodeURIComponent(key)}`;
+
+      const response = await fetch(url);
+      const data = (await response.json()) as {
+        status: string;
+        results?: Array<{
+          formatted_address?: string;
+          geometry?: { location?: { lat?: number; lng?: number } };
+        }>;
+      };
+
+      if (data.status !== "OK" || !data.results?.length) {
+        throw new Error(`No se pudo geocodificar el origen (${data.status}).`);
+      }
+
+      const first = data.results[0];
+      const lat = first.geometry?.location?.lat;
+      const lng = first.geometry?.location?.lng;
+      if (typeof lat !== "number" || typeof lng !== "number") {
+        throw new Error("Google no devolvio coordenadas validas para esa direccion.");
+      }
+
+      setForm((current) => ({
+        ...current,
+        originAddress: first.formatted_address ?? current.originAddress,
+        originLat: lat,
+        originLng: lng,
+      }));
+      setOkMessage("Direccion geocodificada correctamente.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo buscar la direccion.");
     } finally {
       setSubmitting(false);
     }
@@ -264,7 +321,7 @@ export function RoutingPlansPanel() {
                     <td>{plan.name}</td>
                     <td>{plan.categorias.join(", ")}</td>
                     <td>{plan.userName || plan.userId}</td>
-                    <td>{plan.originLat.toFixed(4)}, {plan.originLng.toFixed(4)}</td>
+                    <td>{plan.originAddress || `${plan.originLat.toFixed(4)}, ${plan.originLng.toFixed(4)}`}</td>
                     <td>{plan.dailyByUser} / {plan.dailyByCategory}</td>
                     <td>{new Date(plan.updatedAt).toLocaleString()}</td>
                     <td>
@@ -328,6 +385,17 @@ export function RoutingPlansPanel() {
                   </select>
                 </label>
 
+                <label className={styles.field} htmlFor="routing-plan-origin-address">
+                  <span>Direccion de inicio</span>
+                  <input
+                    id="routing-plan-origin-address"
+                    type="text"
+                    value={form.originAddress}
+                    onChange={(event) => setForm((current) => ({ ...current, originAddress: event.target.value }))}
+                    placeholder="Ej: Av. Maipu 1234, Vicente Lopez, Buenos Aires"
+                  />
+                </label>
+
                 <label className={styles.field} htmlFor="routing-plan-origin-lat">
                   <span>Origen latitud</span>
                   <input
@@ -371,6 +439,12 @@ export function RoutingPlansPanel() {
                     onChange={(event) => setForm((current) => ({ ...current, dailyByCategory: Number(event.target.value || 1) }))}
                   />
                 </label>
+              </div>
+
+              <div className={styles.actionsRow}>
+                <button className={styles.buttonSecondary} type="button" onClick={handleGeocodeOrigin} disabled={submitting}>
+                  Buscar direccion y completar coordenadas
+                </button>
               </div>
 
               <div className={styles.formSection}>
