@@ -102,10 +102,6 @@ export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
   const [routePlans, setRoutePlans] = useState<RoutingPlanListItem[]>([]);
   const [planSearch, setPlanSearch] = useState<string>("");
   const [selectedAreaFilter, setSelectedAreaFilter] = useState<string>("all");
-  const [routeSearch, setRouteSearch] = useState<string>("");
-  const [routeStatusFilter, setRouteStatusFilter] = useState<string>("all");
-  const [routeDateFrom, setRouteDateFrom] = useState<string>("");
-  const [routeDateTo, setRouteDateTo] = useState<string>("");
   const [planDialogContext, setPlanDialogContext] = useState<RoutingModalContext | null>(null);
   const [draftPlanId, setDraftPlanId] = useState<string>("");
   const [routeModalPlan, setRouteModalPlan] = useState<RoutingAreaPlan | null>(null);
@@ -140,24 +136,6 @@ export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
       return matchesSearch && matchesArea;
     });
   }, [planSearch, savedAreaPlans, selectedAreaFilter]);
-
-  const visibleRoutePlans = useMemo(() => {
-    const search = routeSearch.trim().toLowerCase();
-    const fromTime = routeDateFrom ? new Date(`${routeDateFrom}T00:00:00.000Z`).getTime() : null;
-    const toTime = routeDateTo ? new Date(`${routeDateTo}T23:59:59.999Z`).getTime() : null;
-
-    return routePlans.filter((plan) => {
-      const matchesSearch =
-        !search ||
-        plan.id.toLowerCase().includes(search) ||
-        plan.routes.some((route) => route.nombre.toLowerCase().includes(search));
-      const matchesStatus = routeStatusFilter === "all" || plan.status === routeStatusFilter;
-      const planTime = new Date(plan.planningDate).getTime();
-      const matchesFrom = fromTime === null || planTime >= fromTime;
-      const matchesTo = toTime === null || planTime <= toTime;
-      return matchesSearch && matchesStatus && matchesFrom && matchesTo;
-    });
-  }, [routeDateFrom, routeDateTo, routePlans, routeSearch, routeStatusFilter]);
 
   const topStops = useMemo(() => {
     if (!simulation) return [];
@@ -679,40 +657,7 @@ export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
           </>
         ) : (
           <>
-            <p className={styles.subtle}>Desde esta vista puedes revisar los planes de ruta ya generados. Para abrir el módulo de rutas de un plan, vuelve a la tabla de planes y usa el botón Abrir rutas.</p>
-
-            <div className={styles.toolbarRow}>
-              <label className={styles.field} htmlFor="route-search">
-                <span>Buscar ruta</span>
-                <input
-                  id="route-search"
-                  type="text"
-                  value={routeSearch}
-                  onChange={(e) => setRouteSearch(e.target.value)}
-                  placeholder="ID de plan o nombre de ruta"
-                />
-              </label>
-
-              <label className={styles.field} htmlFor="route-status-filter">
-                <span>Estado</span>
-                <select id="route-status-filter" className={styles.select} value={routeStatusFilter} onChange={(e) => setRouteStatusFilter(e.target.value)}>
-                  <option value="all">Todos</option>
-                  <option value="proposed">Propuesto</option>
-                  <option value="confirmed">Confirmado</option>
-                  <option value="cancelled">Cancelado</option>
-                </select>
-              </label>
-
-              <label className={styles.field} htmlFor="route-date-from">
-                <span>Desde</span>
-                <input id="route-date-from" type="date" value={routeDateFrom} onChange={(e) => setRouteDateFrom(e.target.value)} />
-              </label>
-
-              <label className={styles.field} htmlFor="route-date-to">
-                <span>Hasta</span>
-                <input id="route-date-to" type="date" value={routeDateTo} onChange={(e) => setRouteDateTo(e.target.value)} />
-              </label>
-            </div>
+            <p className={styles.subtle}>Aqui tienes el historial de planes de ruta generados. Abre uno para revisarlo o confirmarlo.</p>
 
             <div className={styles.tableWrap}>
               <table className={styles.table}>
@@ -727,12 +672,12 @@ export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleRoutePlans.length === 0 ? (
+                  {routePlans.length === 0 ? (
                     <tr>
                       <td colSpan={6}>No hay planes de ruta para los filtros seleccionados.</td>
                     </tr>
                   ) : (
-                    visibleRoutePlans.map((plan) => (
+                    routePlans.map((plan) => (
                       <tr key={plan.id}>
                         <td>{new Date(plan.planningDate).toLocaleDateString()}</td>
                         <td>{plan.status}</td>
@@ -788,7 +733,7 @@ export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
               <strong>{routeModalPlan.originLat.toFixed(4)}, {routeModalPlan.originLng.toFixed(4)}</strong>
             </div>
             <div className={styles.metric}>
-              <span>Límite diario</span>
+              <span>Limite diario</span>
               <strong>{routeModalPlan.dailyByUser} / {routeModalPlan.dailyByCategory}</strong>
             </div>
           </div>
@@ -1005,7 +950,7 @@ export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
             <div className={styles.modalHeader}>
               <div>
                 <h3 id="area-plan-modal-title">{draftPlanId ? "Editar area" : "Nueva area"}</h3>
-                <p className={styles.subtle}>Crea o ajusta el plan de area antes de abrir el módulo de rutas.</p>
+                <p className={styles.subtle}>Crea o ajusta el plan de area antes de abrir el modulo de rutas.</p>
               </div>
               <button className={styles.buttonSecondary} type="button" onClick={closeDialogs}>
                 Cerrar
@@ -1236,7 +1181,7 @@ export function RoutingPanel({ view = "routes" }: RoutingPanelProps) {
         <article className={styles.card}>
           <div className={styles.head}>
             <h3>Reglas vigentes</h3>
-            <span>{rules.data.categoryRules.length} categorias · {rules.data.crews.length} usuarios operativos · {rules.data.zones.length} zonas</span>
+            <span>{rules.data.categoryRules.length} categorias - {rules.data.crews.length} usuarios operativos - {rules.data.zones.length} zonas</span>
           </div>
         </article>
       )}
