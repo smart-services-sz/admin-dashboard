@@ -726,6 +726,25 @@ export function RoutingPanel() {
                   </div>
                 ))}
               </div>
+
+              <div className={styles.tableWrap}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Reclamo</th>
+                      <th>Motivo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {simulation.unassigned.map((item) => (
+                      <tr key={`${item.reclamoId}-${item.reason}`}>
+                        <td>{item.reclamoId}</td>
+                        <td>{humanizeReason(item.reason)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
