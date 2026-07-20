@@ -5,7 +5,8 @@ import type { AuthUser } from "@/lib/auth.server";
 import { useAuth } from "@/components/auth-context";
 import { AccessManagementPanel, type AccessSection } from "./access-management-panel";
 import { ReclamosPanel } from "./reclamos-panel";
-import { RoutingPanel } from "./routing-panel";
+import { RoutingPlansPanel } from "./routing-plans-panel";
+import { RoutingRoutesPanel } from "./routing-routes-panel";
 import { LogoutButton } from "@/components/logout-button";
 import styles from "./admin-dashboard.module.css";
 
@@ -129,9 +130,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [activeSection, setActiveSection] = useState<Section>("reclamos");
 
-  const isRoutingSection =
-    activeSection === "ruteo-planes" ||
-    activeSection === "ruteo-rutas";
+  const isRoutingSection = activeSection === "ruteo-planes" || activeSection === "ruteo-rutas";
 
   const [theme, setTheme] = useState<Theme>(() => {
     if (typeof window === "undefined") {
@@ -183,12 +182,12 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
       );
     }
 
-    if (isRoutingSection) {
-      const view =
-        activeSection === "ruteo-planes"
-          ? "plans"
-          : "routes";
-      return <RoutingPanel view={view} />;
+    if (activeSection === "ruteo-planes") {
+      return <RoutingPlansPanel />;
+    }
+
+    if (activeSection === "ruteo-rutas") {
+      return <RoutingRoutesPanel />;
     }
 
     if (activeSection === "reclamos" && !canViewReclamos) {
@@ -257,41 +256,30 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
             </button>
           )}
           {canViewReclamos && (
-            <div className={styles.navGroup} data-open={isRoutingSection}>
-              <button
-                type="button"
-                data-active={isRoutingSection}
-                onClick={() => {
-                  setActiveSection("ruteo-rutas");
-                  setIsSidebarOpen(false);
-                }}
-              >
-                <RoutingIcon />
-                <span className={styles.navLabel}>Ruteo</span>
-              </button>
-              <div className={styles.navSubmenu}>
-                <button
-                  type="button"
-                  data-active={activeSection === "ruteo-planes"}
-                  onClick={() => {
-                    setActiveSection("ruteo-planes");
-                    setIsSidebarOpen(false);
-                  }}
-                >
-                  <span className={styles.navLabel}>Planes</span>
-                </button>
-                <button
-                  type="button"
-                  data-active={activeSection === "ruteo-rutas"}
-                  onClick={() => {
-                    setActiveSection("ruteo-rutas");
-                    setIsSidebarOpen(false);
-                  }}
-                >
-                  <span className={styles.navLabel}>Rutas</span>
-                </button>
-              </div>
-            </div>
+            <button
+              type="button"
+              data-active={activeSection === "ruteo-planes"}
+              onClick={() => {
+                setActiveSection("ruteo-planes");
+                setIsSidebarOpen(false);
+              }}
+            >
+              <RoutingIcon />
+              <span className={styles.navLabel}>Planes</span>
+            </button>
+          )}
+          {canViewReclamos && (
+            <button
+              type="button"
+              data-active={activeSection === "ruteo-rutas"}
+              onClick={() => {
+                setActiveSection("ruteo-rutas");
+                setIsSidebarOpen(false);
+              }}
+            >
+              <RoutingIcon />
+              <span className={styles.navLabel}>Rutas</span>
+            </button>
           )}
           <button
             type="button"
