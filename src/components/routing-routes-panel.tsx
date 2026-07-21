@@ -14,6 +14,56 @@ import {
 } from "@/services/routing.service";
 import styles from "./routing-panel.module.css";
 
+let googleMapsScriptPromise: Promise<void> | null = null;
+
+function loadGoogleMapsScript(apiKey: string): Promise<void> {
+  if (typeof window === "undefined") {
+    return Promise.resolve();
+  }
+
+  const windowWithGoogle = window as Window & {
+    google?: {
+      maps?: {
+        Map: new (
+          element: HTMLElement,
+          options: { center: { lat: number; lng: number }; zoom: number; mapTypeControl?: boolean; streetViewControl?: boolean },
+        ) => { fitBounds: (bounds: { extend: (point: { lat: number; lng: number }) => void }) => void; setZoom: (zoom: number) => void };
+        Marker: new (options: { map: unknown; position: { lat: number; lng: number }; label?: string; title?: string }) => unknown;
+        Polyline: new (options: { map: unknown; path: Array<{ lat: number; lng: number }>; geodesic?: boolean; strokeColor?: string; strokeOpacity?: number; strokeWeight?: number }) => unknown;
+        LatLngBounds: new () => { extend: (point: { lat: number; lng: number }) => void };
+      };
+    };
+  };
+
+  if (windowWithGoogle.google?.maps) {
+    return Promise.resolve();
+  }
+
+  if (googleMapsScriptPromise) {
+    return googleMapsScriptPromise;
+  }
+
+  googleMapsScriptPromise = new Promise<void>((resolve, reject) => {
+    const existing = document.getElementById("google-maps-script") as HTMLScriptElement | null;
+    if (existing) {
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("error", () => reject(new Error("No se pudo cargar Google Maps")), { once: true });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.id = "google-maps-script";
+    script.async = true;
+    script.defer = true;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}`;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("No se pudo cargar Google Maps"));
+    document.head.appendChild(script);
+  });
+
+  return googleMapsScriptPromise;
+}
+
 type AreaFilter = "all" | RoutingCategoryRule["categoria"];
 
 const FALLBACK_CATEGORIES = [
@@ -121,6 +171,7 @@ type ToastMessage = {
 };
 
 type OperationStage = "borrador" | "validado" | "confirmado" | "despachado" | "cerrado";
+type RouteStop = RoutingSimulationResult["routes"][number]["stops"][number];
 
 const OPERATION_STAGE_LABELS: Record<OperationStage, string> = {
   borrador: "Borrador",
@@ -128,6 +179,14 @@ const OPERATION_STAGE_LABELS: Record<OperationStage, string> = {
   confirmado: "Confirmado",
   despachado: "Despachado",
   cerrado: "Cerrado",
+};
+
+const OPERATION_STAGE_HELP: Record<OperationStage, string> = {
+  borrador: "La corrida esta recien generada y aun no fue revisada operativamente.",
+  validado: "Se reviso la ruta y la informacion es correcta para salir a operar.",
+  confirmado: "El plan ya fue confirmado en sistema y queda listo para ejecucion formal.",
+  despachado: "La cuadrilla ya recibio la ruta y se encuentra en ejecucion en campo.",
+  cerrado: "La corrida finalizo y no deberia seguir recibiendo cambios operativos.",
 };
 
 function getUnassignedSuggestion(reason: string): string {
@@ -182,6 +241,8 @@ export function RoutingRoutesPanel() {
   const [auditTrail, setAuditTrail] = useState<AuditEntry[]>([]);
   const [runHistory, setRunHistory] = useState<RunQualitySnapshot[]>([]);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const googleMapsKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
 
   const lastErrorToastRef = useRef<string | null>(null);
   const lastOkToastRef = useRef<string | null>(null);
@@ -258,6 +319,28 @@ export function RoutingRoutesPanel() {
   const visibleStops = useMemo(() => {
     return selectedRoute?.stops ?? [];
   }, [selectedRoute]);
+
+  const visibleStopsInPlanCategories = useMemo(() => {
+    if (!selectedPlan) {
+      return visibleStops;
+    }
+
+    const categories = new Set(getPlanCategories(selectedPlan));
+    return visibleStops.filter((stop) => {
+      const normalized = normalizeCategory(stop.categoria);
+      return normalized ? categories.has(normalized) : true;
+    });
+  }, [selectedPlan, visibleStops]);
+
+  const mapStops = useMemo<RouteStop[]>(() => {
+    return visibleStopsInPlanCategories.filter(
+      (stop) =>
+        Number.isFinite(stop.lat) &&
+        Number.isFinite(stop.lng) &&
+        Math.abs(stop.lat) <= 90 &&
+        Math.abs(stop.lng) <= 180,
+    );
+  }, [visibleStopsInPlanCategories]);
 
   const preflightChecks = useMemo<PreflightCheck[]>(() => {
     if (!selectedPlan) {
@@ -381,6 +464,86 @@ export function RoutingRoutesPanel() {
     lastOkToastRef.current = okMessage;
     pushToast("success", okMessage);
   }, [okMessage]);
+
+  useEffect(() => {
+    const container = mapContainerRef.current;
+    if (!container || mapStops.length === 0 || !googleMapsKey) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const renderMap = async () => {
+      try {
+        await loadGoogleMapsScript(googleMapsKey);
+        if (cancelled) {
+          return;
+        }
+
+        const windowWithGoogle = window as Window & {
+          google?: {
+            maps?: {
+              Map: new (
+                element: HTMLElement,
+                options: { center: { lat: number; lng: number }; zoom: number; mapTypeControl?: boolean; streetViewControl?: boolean },
+              ) => { fitBounds: (bounds: { extend: (point: { lat: number; lng: number }) => void }) => void; setZoom: (zoom: number) => void };
+              Marker: new (options: { map: unknown; position: { lat: number; lng: number }; label?: string; title?: string }) => unknown;
+              Polyline: new (options: { map: unknown; path: Array<{ lat: number; lng: number }>; geodesic?: boolean; strokeColor?: string; strokeOpacity?: number; strokeWeight?: number }) => unknown;
+              LatLngBounds: new () => { extend: (point: { lat: number; lng: number }) => void };
+            };
+          };
+        };
+
+        const maps = windowWithGoogle.google?.maps;
+        if (!maps) {
+          return;
+        }
+
+        const center = { lat: mapStops[0].lat, lng: mapStops[0].lng };
+        const map = new maps.Map(container, {
+          center,
+          zoom: 13,
+          mapTypeControl: false,
+          streetViewControl: false,
+        });
+
+        const path = mapStops.map((stop) => ({ lat: stop.lat, lng: stop.lng }));
+        path.forEach((position, index) => {
+          new maps.Marker({
+            map,
+            position,
+            label: String(index + 1),
+            title: mapStops[index]?.direccion || `Parada ${index + 1}`,
+          });
+        });
+
+        new maps.Polyline({
+          map,
+          path,
+          geodesic: true,
+          strokeColor: "#0f766e",
+          strokeOpacity: 0.92,
+          strokeWeight: 4,
+        });
+
+        const bounds = new maps.LatLngBounds();
+        path.forEach((point) => bounds.extend(point));
+        map.fitBounds(bounds);
+
+        if (path.length === 1) {
+          map.setZoom(15);
+        }
+      } catch {
+        // Mantenemos la UI operativa aunque falle la carga del mapa.
+      }
+    };
+
+    void renderMap();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [googleMapsKey, mapStops]);
 
   const resetWizard = () => {
     setSelectedArea("all");
@@ -1168,7 +1331,13 @@ export function RoutingRoutesPanel() {
                 <div className={styles.metric}>
                   <span>Estado actual</span>
                   <strong>{OPERATION_STAGE_LABELS[operationStage]}</strong>
+                  <span className={styles.subtle}>{OPERATION_STAGE_HELP[operationStage]}</span>
                 </div>
+              </div>
+              <div className={styles.statusLegend}>
+                <p><strong>Validado:</strong> la ruta fue revisada y se aprueba para uso operativo.</p>
+                <p><strong>Despachado:</strong> la cuadrilla ya salio a campo con esa ruta.</p>
+                <p><strong>Cerrar corrida:</strong> se marca como finalizada y solo queda para consulta historica.</p>
               </div>
               <div className={styles.actionsRow}>
                 <button
@@ -1201,34 +1370,14 @@ export function RoutingRoutesPanel() {
             <div className={styles.grid}>
               <div className={styles.metric}><span>Reclamos leidos</span><strong>{generatedPlan.summary.totalFetched}</strong></div>
               <div className={styles.metric}><span>Asignados</span><strong>{generatedPlan.summary.totalAssigned}</strong></div>
-              <div className={styles.metric}><span>No asignados</span><strong>{generatedPlan.summary.totalUnassigned}</strong></div>
+              <div className={styles.metric}><span>No asignados (resumen)</span><strong>{generatedPlan.summary.totalUnassigned}</strong></div>
               <div className={styles.metric}><span>Rutas generadas</span><strong>{generatedPlan.routes.length}</strong></div>
             </div>
 
             {generatedUnassignedByReason.length > 0 && (
-              <div className={styles.formSection}>
-                <h4 className={styles.sectionTitle}>No asignados por causa</h4>
-                <div className={styles.tableWrap}>
-                  <table className={styles.table}>
-                    <thead>
-                      <tr>
-                        <th>Causa</th>
-                        <th>Cantidad</th>
-                        <th>Accion sugerida</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {generatedUnassignedByReason.map(([reason, count]) => (
-                        <tr key={`generated-${reason}`}>
-                          <td>{reason}</td>
-                          <td>{count}</td>
-                          <td>{getUnassignedSuggestion(reason)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              <p className={styles.subtle}>
+                Detalle de no asignados oculto para reducir ruido visual. Puedes revisar causas en el modulo de rutas generadas.
+              </p>
             )}
 
             {generatedPlan.routes.length > 0 && (
@@ -1247,10 +1396,22 @@ export function RoutingRoutesPanel() {
             {selectedRoute && (
               <div className={styles.grid}>
                 <div className={styles.metric}><span>Usuario operativo</span><strong>{selectedRoute.nombre || selectedRoute.crewId}</strong></div>
-                <div className={styles.metric}><span>Paradas</span><strong>{selectedRoute.assignedClaims}</strong></div>
+                <div className={styles.metric}><span>Paradas visibles</span><strong>{visibleStopsInPlanCategories.length}</strong></div>
                 <div className={styles.metric}><span>Distancia total (km)</span><strong>{selectedRoute.totalDistanceKm}</strong></div>
                 <div className={styles.metric}><span>Duracion total (min)</span><strong>{selectedRoute.totalDurationMin}</strong></div>
               </div>
+            )}
+
+            {googleMapsKey ? (
+              mapStops.length > 0 ? (
+                <div className={styles.mapWrap}>
+                  <div ref={mapContainerRef} className={styles.routeMap} />
+                </div>
+              ) : (
+                <p className={styles.subtle}>No hay coordenadas validas para trazar el mapa en la ruta seleccionada.</p>
+              )
+            ) : (
+              <p className={styles.subtle}>Configura NEXT_PUBLIC_GOOGLE_MAPS_API_KEY para ver el trazado del mapa en este paso.</p>
             )}
 
             <div className={styles.tableWrap}>
@@ -1258,7 +1419,6 @@ export function RoutingRoutesPanel() {
                 <thead>
                   <tr>
                     <th>Sec.</th>
-                    <th>Reclamo</th>
                     <th>Categoria</th>
                     <th>Direccion</th>
                     <th>Dist. tramo (km)</th>
@@ -1266,15 +1426,14 @@ export function RoutingRoutesPanel() {
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleStops.length === 0 ? (
+                  {visibleStopsInPlanCategories.length === 0 ? (
                     <tr>
-                      <td colSpan={6}>No hay paradas para la ruta seleccionada.</td>
+                      <td colSpan={5}>No hay paradas relevantes para las categorias del plan seleccionado.</td>
                     </tr>
                   ) : (
-                    visibleStops.map((stop) => (
+                    visibleStopsInPlanCategories.map((stop) => (
                       <tr key={`${stop.reclamoId}-${stop.sequence}`}>
                         <td>{stop.sequence}</td>
-                        <td>{stop.reclamoId}</td>
                         <td>{getCategoryLabel(stop.categoria)}</td>
                         <td>{stop.direccion}</td>
                         <td>{stop.distanceFromPreviousKm}</td>
@@ -1295,72 +1454,79 @@ export function RoutingRoutesPanel() {
               </button>
             </div>
 
-            {runHistory.length > 0 && (
-              <div className={styles.formSection}>
-                <h4 className={styles.sectionTitle}>Calidad de corridas (historial)</h4>
-                <div className={styles.tableWrap}>
-                  <table className={styles.table}>
-                    <thead>
-                      <tr>
-                        <th>Fecha</th>
-                        <th>Asignacion</th>
-                        <th>Asignados / Leidos</th>
-                        <th>No asignados</th>
-                        <th>Distancia total (km)</th>
-                        <th>Duracion total (min)</th>
-                        <th>Motor</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {runHistory.map((run) => (
-                        <tr key={run.id}>
-                          <td>{new Date(run.at).toLocaleString()}</td>
-                          <td>{run.assignmentRate}%</td>
-                          <td>{run.totalAssigned} / {run.totalFetched}</td>
-                          <td>{run.totalUnassigned}</td>
-                          <td>{run.totalDistanceKm.toFixed(2)}</td>
-                          <td>{run.totalDurationMin.toFixed(1)}</td>
-                          <td>
-                            {run.withGoogle
-                              ? run.fallbackUsed
-                                ? "Google -> Fallback"
-                                : "Google"
-                              : "Interno"}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
+            {(runHistory.length > 0 || auditTrail.length > 0) && (
+              <details className={styles.compactDetails}>
+                <summary>Ver trazabilidad de la corrida</summary>
+                <div className={styles.formSection}>
+                  {runHistory.length > 0 && (
+                    <div className={styles.formSection}>
+                      <h4 className={styles.sectionTitle}>Calidad de corridas (historial)</h4>
+                      <div className={styles.tableWrap}>
+                        <table className={styles.table}>
+                          <thead>
+                            <tr>
+                              <th>Fecha</th>
+                              <th>Asignacion</th>
+                              <th>Asignados / Leidos</th>
+                              <th>No asignados</th>
+                              <th>Distancia total (km)</th>
+                              <th>Duracion total (min)</th>
+                              <th>Motor</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {runHistory.map((run) => (
+                              <tr key={run.id}>
+                                <td>{new Date(run.at).toLocaleString()}</td>
+                                <td>{run.assignmentRate}%</td>
+                                <td>{run.totalAssigned} / {run.totalFetched}</td>
+                                <td>{run.totalUnassigned}</td>
+                                <td>{run.totalDistanceKm.toFixed(2)}</td>
+                                <td>{run.totalDurationMin.toFixed(1)}</td>
+                                <td>
+                                  {run.withGoogle
+                                    ? run.fallbackUsed
+                                      ? "Google -> Fallback"
+                                      : "Google"
+                                    : "Interno"}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
 
-            {auditTrail.length > 0 && (
-              <div className={styles.formSection}>
-                <h4 className={styles.sectionTitle}>Bitacora de la corrida</h4>
-                <div className={styles.tableWrap}>
-                  <table className={styles.table}>
-                    <thead>
-                      <tr>
-                        <th>Fecha</th>
-                        <th>Accion</th>
-                        <th>Resultado</th>
-                        <th>Detalle</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {auditTrail.map((entry) => (
-                        <tr key={entry.id}>
-                          <td>{new Date(entry.at).toLocaleString()}</td>
-                          <td>{entry.action}</td>
-                          <td>{entry.outcome}</td>
-                          <td>{entry.detail}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  {auditTrail.length > 0 && (
+                    <div className={styles.formSection}>
+                      <h4 className={styles.sectionTitle}>Bitacora de la corrida</h4>
+                      <div className={styles.tableWrap}>
+                        <table className={styles.table}>
+                          <thead>
+                            <tr>
+                              <th>Fecha</th>
+                              <th>Accion</th>
+                              <th>Resultado</th>
+                              <th>Detalle</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {auditTrail.map((entry) => (
+                              <tr key={entry.id}>
+                                <td>{new Date(entry.at).toLocaleString()}</td>
+                                <td>{entry.action}</td>
+                                <td>{entry.outcome}</td>
+                                <td>{entry.detail}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
+              </details>
             )}
           </div>
         )}
