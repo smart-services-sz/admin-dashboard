@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { accessControlService, type ManagedUser } from "@/services/access-control.service";
+import { CATEGORIA_LABELS } from "@/services/reclamos.service";
 import {
   routingService,
   type RoutingAreaPlan,
-  type RoutingPlanListItem,
-  type RoutingPlanResponse,
+  type RoutingCategoryRule,
   type RoutingRulesResponse,
   type RoutingSimulationResult,
   type RoutingZoneRule,
@@ -14,11 +14,40 @@ import {
 } from "@/services/routing.service";
 import styles from "./routing-panel.module.css";
 
+type AreaFilter = "all" | RoutingCategoryRule["categoria"];
+
+const FALLBACK_CATEGORIES = [
+  "agua_y_cloacas",
+  "alumbrado",
+  "baches_y_pavimento",
+  "arbolado",
+  "residuos",
+  "electricidad",
+  "gas",
+  "transporte",
+  "infraestructura",
+  "otros",
+] as const;
+
+const CATEGORY_ALIASES: Record<string, (typeof FALLBACK_CATEGORIES)[number]> = {
+  agua_y_cloacas: "agua_y_cloacas",
+  aguas_y_cloacas: "agua_y_cloacas",
+  agua_cloacas: "agua_y_cloacas",
+  aguas_cloacas: "agua_y_cloacas",
+  alumbrado: "alumbrado",
+  baches_y_pavimento: "baches_y_pavimento",
+  baches_pavimento: "baches_y_pavimento",
+  arbolado: "arbolado",
+  residuos: "residuos",
+  electricidad: "electricidad",
+  gas: "gas",
+  transporte: "transporte",
+  infraestructura: "infraestructura",
+  otros: "otros",
+};
+
 const DEFAULT_RULES: UpsertRoutingRulesPayload = {
-  categoryRules: [
-    { categoria: "alumbrado", cupoDiario: 20, pesoPrioridad: 2 },
-    { categoria: "baches_y_pavimento", cupoDiario: 12, pesoPrioridad: 3 },
-  ],
+  categoryRules: FALLBACK_CATEGORIES.map((categoria) => ({ categoria, cupoDiario: 20, pesoPrioridad: 1 })),
   crews: [],
   zones: [
     {
@@ -43,29 +72,123 @@ function sanitizeZones(zones: RoutingZoneRule[]) {
   }));
 }
 
+function getCategoryLabel(value: string): string {
+  const normalizedCategory = normalizeCategory(value);
+  if (normalizedCategory) {
+    return CATEGORIA_LABELS[normalizedCategory];
+  }
+
+  return value
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+type PreflightStatus = "ok" | "error" | "warning";
+
+type PreflightCheck = {
+  key: string;
+  label: string;
+  status: PreflightStatus;
+  detail: string;
+};
+
+type AuditEntry = {
+  id: string;
+  at: string;
+  action: string;
+  outcome: "ok" | "error" | "info";
+  detail: string;
+};
+
+type RunQualitySnapshot = {
+  id: string;
+  at: string;
+  planId: string | null;
+  withGoogle: boolean;
+  fallbackUsed: boolean;
+  totalFetched: number;
+  totalAssigned: number;
+  totalUnassigned: number;
+  assignmentRate: number;
+  totalDistanceKm: number;
+  totalDurationMin: number;
+};
+
+type OperationStage = "borrador" | "validado" | "confirmado" | "despachado" | "cerrado";
+
+const OPERATION_STAGE_LABELS: Record<OperationStage, string> = {
+  borrador: "Borrador",
+  validado: "Validado",
+  confirmado: "Confirmado",
+  despachado: "Despachado",
+  cerrado: "Cerrado",
+};
+
+function getUnassignedSuggestion(reason: string): string {
+  const normalized = reason.toLowerCase();
+
+  if (normalized.includes("categoria") || normalized.includes("category")) {
+    return "Revisa categorias habilitadas en el plan y en allowedCategorias del usuario operativo.";
+  }
+
+  if (normalized.includes("cupo") || normalized.includes("quota") || normalized.includes("maximo")) {
+    return "Aumenta cupos por categoria o por usuario para esta corrida.";
+  }
+
+  if (normalized.includes("zona") || normalized.includes("zone")) {
+    return "Verifica reglas de zonas y la cobertura geografica de la cuadrilla.";
+  }
+
+  if (normalized.includes("usuario") || normalized.includes("crew") || normalized.includes("agent")) {
+    return "Asigna otro usuario operativo o amplia capacidad de la cuadrilla actual.";
+  }
+
+  return "Revisa reglas de corrida y parametros del plan antes de regenerar.";
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
 export function RoutingRoutesPanel() {
   const [plans, setPlans] = useState<RoutingAreaPlan[]>([]);
   const [agentUsers, setAgentUsers] = useState<ManagedUser[]>([]);
   const [rules, setRules] = useState<RoutingRulesResponse | null>(null);
-  const [routePlans, setRoutePlans] = useState<RoutingPlanListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [okMessage, setOkMessage] = useState<string | null>(null);
-  const [selectedArea, setSelectedArea] = useState<string>("all");
+  const [selectedArea, setSelectedArea] = useState<AreaFilter>("all");
   const [selectedPlanId, setSelectedPlanId] = useState<string>("");
   const [selectedUserId, setSelectedUserId] = useState<string>("");
   const [maxFetch, setMaxFetch] = useState<number>(200);
   const [useGoogleOptimization, setUseGoogleOptimization] = useState<boolean>(true);
+  const [persistGlobalRules, setPersistGlobalRules] = useState<boolean>(false);
   const [wizardStep, setWizardStep] = useState<1 | 2 | 3 | 4>(1);
+  const [coverageEstimate, setCoverageEstimate] = useState<RoutingSimulationResult | null>(null);
   const [loadedClaims, setLoadedClaims] = useState<RoutingSimulationResult | null>(null);
   const [generatedPlan, setGeneratedPlan] = useState<RoutingSimulationResult | null>(null);
+  const [operationStage, setOperationStage] = useState<OperationStage>("borrador");
   const [selectedCrewId, setSelectedCrewId] = useState<string>("");
+  const [auditTrail, setAuditTrail] = useState<AuditEntry[]>([]);
+  const [runHistory, setRunHistory] = useState<RunQualitySnapshot[]>([]);
+
+  const logAudit = (entry: Omit<AuditEntry, "id" | "at">) => {
+    const next: AuditEntry = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      at: new Date().toISOString(),
+      ...entry,
+    };
+
+    setAuditTrail((current) => [next, ...current].slice(0, 30));
+  };
 
   const availableAreas = useMemo(() => {
-    const areas = new Set<string>();
+    const areas = new Set<RoutingCategoryRule["categoria"]>();
     for (const plan of plans) {
-      for (const categoria of plan.categorias) {
+      for (const categoria of getPlanCategories(plan)) {
         areas.add(categoria);
       }
     }
@@ -73,7 +196,13 @@ export function RoutingRoutesPanel() {
   }, [plans]);
 
   const visiblePlans = useMemo(() => {
-    return plans.filter((plan) => selectedArea === "all" || plan.categorias.includes(selectedArea));
+    return plans.filter((plan) => {
+      if (selectedArea === "all") {
+        return true;
+      }
+
+      return getPlanCategories(plan).includes(selectedArea);
+    });
   }, [plans, selectedArea]);
 
   const selectedPlan = useMemo(() => {
@@ -90,22 +219,99 @@ export function RoutingRoutesPanel() {
     return selectedRoute?.stops ?? [];
   }, [selectedRoute]);
 
+  const preflightChecks = useMemo<PreflightCheck[]>(() => {
+    if (!selectedPlan) {
+      return [];
+    }
+
+    const planCategories = getPlanCategories(selectedPlan);
+    const hasCategories = planCategories.length > 0;
+
+    const selectedUser = agentUsers.find((user) => user.id === selectedPlan.userId);
+    const hasActiveUser = Boolean(selectedUser);
+
+    const hasValidDailyByUser = Number.isFinite(selectedPlan.dailyByUser) && selectedPlan.dailyByUser > 0;
+    const hasValidDailyByCategory = Number.isFinite(selectedPlan.dailyByCategory) && selectedPlan.dailyByCategory > 0;
+
+    const hasValidOrigin =
+      Number.isFinite(selectedPlan.originLat) &&
+      Number.isFinite(selectedPlan.originLng) &&
+      Math.abs(selectedPlan.originLat) <= 90 &&
+      Math.abs(selectedPlan.originLng) <= 180;
+
+    const hasConfiguredRules =
+      Boolean(rules?.data.categoryRules.length) &&
+      Boolean(rules?.data.zones.length);
+
+    return [
+      {
+        key: "categories",
+        label: "Categorias del plan",
+        status: hasCategories ? "ok" : "error",
+        detail: hasCategories
+          ? `${planCategories.map((categoria) => getCategoryLabel(categoria)).join(", ")}`
+          : "No hay categorias canonicas validas para ruteo.",
+      },
+      {
+        key: "user",
+        label: "Usuario operativo activo",
+        status: hasActiveUser ? "ok" : "error",
+        detail: hasActiveUser
+          ? `${selectedUser?.name || selectedUser?.email}`
+          : "El usuario base del plan no esta activo o no tiene rol AGENT.",
+      },
+      {
+        key: "quota",
+        label: "Cupos configurados",
+        status: hasValidDailyByUser && hasValidDailyByCategory ? "ok" : "error",
+        detail:
+          hasValidDailyByUser && hasValidDailyByCategory
+            ? `Usuario: ${selectedPlan.dailyByUser} · Categoria: ${selectedPlan.dailyByCategory}`
+            : "Los cupos por usuario y por categoria deben ser mayores que 0.",
+      },
+      {
+        key: "origin",
+        label: "Origen georreferenciado",
+        status: hasValidOrigin ? "ok" : "error",
+        detail: hasValidOrigin
+          ? `${selectedPlan.originLat.toFixed(6)}, ${selectedPlan.originLng.toFixed(6)}`
+          : "Latitud/longitud invalidas o fuera de rango.",
+      },
+      {
+        key: "rules",
+        label: "Reglas y zonas disponibles",
+        status: hasConfiguredRules ? "ok" : "warning",
+        detail: hasConfiguredRules
+          ? "Se usaran reglas configuradas en el sistema."
+          : "No hay reglas completas cargadas; se aplicara fallback por defecto.",
+      },
+    ];
+  }, [agentUsers, rules, selectedPlan]);
+
+  const hasPreflightBlockingErrors = preflightChecks.some((check) => check.status === "error");
+
+  const loadedUnassignedByReason = useMemo(() => {
+    return Object.entries(loadedClaims?.summary.unassignedByReason ?? {});
+  }, [loadedClaims]);
+
+  const generatedUnassignedByReason = useMemo(() => {
+    return Object.entries(generatedPlan?.summary.unassignedByReason ?? {});
+  }, [generatedPlan]);
+
   const loadData = async () => {
     setLoading(true);
     setError(null);
 
     try {
-      const [plansResponse, usersResponse, rulesResponse, routePlansResponse] = await Promise.all([
+      const [plansResponse, usersResponse, rulesResponse] = await Promise.all([
         routingService.getAreaPlans(),
         accessControlService.getActiveUsersByRole("AGENT"),
         routingService.getRules(),
-        routingService.getPlans(),
       ]);
 
       setPlans(plansResponse.data);
       setAgentUsers(usersResponse.data);
       setRules(rulesResponse);
-      setRoutePlans(routePlansResponse.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo cargar el modulo de rutas.");
     } finally {
@@ -114,17 +320,9 @@ export function RoutingRoutesPanel() {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadData();
   }, []);
-
-  useEffect(() => {
-    if (!selectedPlan) {
-      setSelectedUserId("");
-      return;
-    }
-
-    setSelectedUserId(selectedPlan.userId);
-  }, [selectedPlan]);
 
   const resetWizard = () => {
     setSelectedArea("all");
@@ -132,10 +330,15 @@ export function RoutingRoutesPanel() {
     setSelectedUserId("");
     setMaxFetch(200);
     setUseGoogleOptimization(true);
+    setPersistGlobalRules(false);
     setWizardStep(1);
+    setCoverageEstimate(null);
     setLoadedClaims(null);
     setGeneratedPlan(null);
+    setOperationStage("borrador");
     setSelectedCrewId("");
+    setAuditTrail([]);
+    setRunHistory([]);
     setError(null);
     setOkMessage(null);
   };
@@ -146,11 +349,36 @@ export function RoutingRoutesPanel() {
       throw new Error("Selecciona un usuario operativo valido.");
     }
 
+    const planCategories = getPlanCategories(plan);
+    if (planCategories.length === 0) {
+      throw new Error("El plan seleccionado no tiene categorias validas para ruteo.");
+    }
+
     const baseRules = rules?.data ?? (await routingService.getRules()).data ?? { categoryRules: [], crews: [], zones: [] };
     const seedSource = baseRules.categoryRules.length > 0 && baseRules.zones.length > 0 ? baseRules : DEFAULT_RULES;
-    const categoryRules = seedSource.categoryRules
-      .filter((rule) => plan.categorias.length === 0 || plan.categorias.includes(rule.categoria))
-      .map((rule) => ({ ...rule, cupoDiario: plan.dailyByCategory }));
+    const sourceByCategory = new Map<RoutingCategoryRule["categoria"], RoutingCategoryRule>();
+
+    for (const rule of seedSource.categoryRules) {
+      const normalizedCategory = normalizeCategory(rule.categoria);
+      if (!normalizedCategory || sourceByCategory.has(normalizedCategory)) {
+        continue;
+      }
+
+      sourceByCategory.set(normalizedCategory, {
+        categoria: normalizedCategory,
+        cupoDiario: rule.cupoDiario,
+        pesoPrioridad: rule.pesoPrioridad,
+      });
+    }
+
+    const categoryRules: RoutingCategoryRule[] = planCategories.map((categoria) => {
+      const sourceRule = sourceByCategory.get(categoria);
+      return {
+        categoria,
+        cupoDiario: plan.dailyByCategory,
+        pesoPrioridad: sourceRule?.pesoPrioridad ?? 1,
+      };
+    });
 
     if (categoryRules.length === 0) {
       throw new Error("El plan seleccionado no tiene categorias configuradas para ruteo.");
@@ -175,42 +403,95 @@ export function RoutingRoutesPanel() {
     };
   };
 
-  const mapPlanToSimulation = (plan: RoutingPlanResponse["data"]): RoutingSimulationResult => ({
-    status: "ok",
-    generatedAt: plan.planningDate,
-    planningDate: plan.planningDate,
-    summary: {
-      totalFetched: Number((plan.summary.totalFetched as number | undefined) ?? 0),
-      totalCandidateAfterRules: Number((plan.summary.totalCandidateAfterRules as number | undefined) ?? 0),
-      totalAssigned: plan.routes.reduce((acc, route) => acc + route.assignedClaims, 0),
-      totalUnassigned: plan.unassigned.length,
-      unassignedByReason: (plan.summary.unassignedByReason as Record<string, number> | undefined) ?? {},
-      categoryQuotaConsumption: (plan.summary.categoryQuotaConsumption as Record<string, number> | undefined) ?? {},
-      googleOptimization:
-        (plan.summary.googleOptimization as {
-          enabled: boolean;
-          optimizedRoutes: number;
-          failedRoutes: number;
-        } | undefined) ?? {
-          enabled: false,
-          optimizedRoutes: 0,
-          failedRoutes: 0,
-        },
-    },
-    routes: plan.routes,
-    unassigned: plan.unassigned.map((item) => ({ reclamoId: item.reclamoId, reason: item.reason })),
-    savedPlanId: plan.id,
-  });
-
   const handleContinueToLoad = () => {
     if (!selectedPlan) {
       setError("Selecciona un plan para continuar.");
       return;
     }
 
+    if (hasPreflightBlockingErrors) {
+      setError("Corrige los puntos marcados en la validacion previa antes de continuar al paso 2.");
+      logAudit({
+        action: "validacion_previa",
+        outcome: "error",
+        detail: "Se intento avanzar al paso 2 con errores bloqueantes.",
+      });
+      return;
+    }
+
     setError(null);
     setOkMessage(`Plan listo para cargar reclamos: ${selectedPlan.name}`);
+    if (!selectedUserId) {
+      setSelectedUserId(selectedPlan.userId);
+    }
+    setCoverageEstimate(null);
+    setLoadedClaims(null);
     setWizardStep(2);
+    logAudit({
+      action: "validacion_previa",
+      outcome: "ok",
+      detail: `Plan ${selectedPlan.name} listo para carga de reclamos.`,
+    });
+  };
+
+  const handleEstimateCoverage = async () => {
+    if (!selectedPlan) {
+      setError("Selecciona un plan para estimar cobertura.");
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+    setOkMessage(null);
+
+    try {
+      const payload = await buildPayload(selectedPlan, selectedPlan.userId);
+      const runSimulation = async () =>
+        routingService.simulate({
+          maxFetch,
+          useGoogleOptimization: false,
+          originLat: selectedPlan.originLat,
+          originLng: selectedPlan.originLng,
+          overrideRules: payload,
+        });
+
+      let result: RoutingSimulationResult | null = null;
+      let lastError: unknown = null;
+      const attempts = 2;
+
+      for (let attempt = 1; attempt <= attempts; attempt += 1) {
+        try {
+          result = await runSimulation();
+          break;
+        } catch (err) {
+          lastError = err;
+          if (attempt < attempts) {
+            await wait(350);
+          }
+        }
+      }
+
+      if (!result) {
+        throw lastError instanceof Error ? lastError : new Error("No se pudo estimar la cobertura.");
+      }
+
+      setCoverageEstimate(result);
+      setOkMessage("Estimacion de cobertura lista. Puedes ajustar el maximo o continuar con la carga completa.");
+      logAudit({
+        action: "estimar_cobertura",
+        outcome: "ok",
+        detail: `Candidatos: ${result.summary.totalCandidateAfterRules} · No asignados: ${result.summary.totalUnassigned}`,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo estimar la cobertura.");
+      logAudit({
+        action: "estimar_cobertura",
+        outcome: "error",
+        detail: err instanceof Error ? err.message : "Error desconocido al estimar cobertura.",
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleLoadClaims = async () => {
@@ -225,21 +506,54 @@ export function RoutingRoutesPanel() {
 
     try {
       const payload = await buildPayload(selectedPlan, selectedPlan.userId);
-      const result = await routingService.simulate({
-        maxFetch,
-        useGoogleOptimization: false,
-        originLat: selectedPlan.originLat,
-        originLng: selectedPlan.originLng,
-        overrideRules: payload,
-      });
+      const runSimulation = async () =>
+        routingService.simulate({
+          maxFetch,
+          useGoogleOptimization: false,
+          originLat: selectedPlan.originLat,
+          originLng: selectedPlan.originLng,
+          overrideRules: payload,
+        });
+
+      let result: RoutingSimulationResult | null = null;
+      let lastError: unknown = null;
+      const attempts = 2;
+
+      for (let attempt = 1; attempt <= attempts; attempt += 1) {
+        try {
+          result = await runSimulation();
+          break;
+        } catch (err) {
+          lastError = err;
+          if (attempt < attempts) {
+            await wait(350);
+          }
+        }
+      }
+
+      if (!result) {
+        throw lastError instanceof Error ? lastError : new Error("No se pudieron cargar los reclamos.");
+      }
 
       setLoadedClaims(result);
+      setCoverageEstimate(result);
       setGeneratedPlan(null);
+      setOperationStage("borrador");
       setSelectedCrewId("");
       setWizardStep(3);
       setOkMessage("Reclamos cargados. Ya puedes generar la ruta optimizada.");
+      logAudit({
+        action: "cargar_reclamos",
+        outcome: "ok",
+        detail: `Leidos: ${result.summary.totalFetched} · Asignables: ${result.summary.totalAssigned}`,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudieron cargar los reclamos.");
+      logAudit({
+        action: "cargar_reclamos",
+        outcome: "error",
+        detail: err instanceof Error ? err.message : "Error desconocido al cargar reclamos.",
+      });
     } finally {
       setSubmitting(false);
     }
@@ -262,22 +576,103 @@ export function RoutingRoutesPanel() {
 
     try {
       const payload = await buildPayload(selectedPlan, selectedUserId);
-      await routingService.upsertRules(payload);
-      const result = await routingService.generate({
-        maxFetch,
-        useGoogleOptimization,
-        originLat: selectedPlan.originLat,
-        originLng: selectedPlan.originLng,
-        overrideRules: payload,
-      });
+      if (persistGlobalRules) {
+        await routingService.upsertRules(payload);
+      }
+
+      const runGenerate = async (withGoogle: boolean) =>
+        routingService.generate({
+          maxFetch,
+          useGoogleOptimization: withGoogle,
+          originLat: selectedPlan.originLat,
+          originLng: selectedPlan.originLng,
+          overrideRules: payload,
+        });
+
+      let result: RoutingSimulationResult | null = null;
+      let fallbackUsed = false;
+      let lastError: unknown = null;
+
+      const attempts = 2;
+      for (let attempt = 1; attempt <= attempts; attempt += 1) {
+        try {
+          result = await runGenerate(useGoogleOptimization);
+          break;
+        } catch (err) {
+          lastError = err;
+          if (attempt < attempts) {
+            await wait(400);
+          }
+        }
+      }
+
+      if (!result && useGoogleOptimization) {
+        fallbackUsed = true;
+        for (let attempt = 1; attempt <= attempts; attempt += 1) {
+          try {
+            result = await runGenerate(false);
+            break;
+          } catch (err) {
+            lastError = err;
+            if (attempt < attempts) {
+              await wait(400);
+            }
+          }
+        }
+      }
+
+      if (!result) {
+        throw lastError instanceof Error ? lastError : new Error("No se pudo generar la ruta.");
+      }
 
       setGeneratedPlan(result);
+      setOperationStage("borrador");
       setSelectedCrewId(result.routes[0]?.crewId ?? "");
       setWizardStep(4);
       await loadData();
-      setOkMessage("Ruta optimizada generada. Revisa el resultado y confirma si esta correcta.");
+
+      const totalDistanceKm = result.routes.reduce((acc, route) => acc + route.totalDistanceKm, 0);
+      const totalDurationMin = result.routes.reduce((acc, route) => acc + route.totalDurationMin, 0);
+      const assignmentRate =
+        result.summary.totalFetched > 0
+          ? Number(((result.summary.totalAssigned / result.summary.totalFetched) * 100).toFixed(1))
+          : 0;
+
+      const snapshot: RunQualitySnapshot = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        at: new Date().toISOString(),
+        planId: result.savedPlanId,
+        withGoogle: useGoogleOptimization,
+        fallbackUsed,
+        totalFetched: result.summary.totalFetched,
+        totalAssigned: result.summary.totalAssigned,
+        totalUnassigned: result.summary.totalUnassigned,
+        assignmentRate,
+        totalDistanceKm,
+        totalDurationMin,
+      };
+
+      setRunHistory((current) => [snapshot, ...current].slice(0, 20));
+
+      setOkMessage(
+        fallbackUsed
+          ? "Ruta generada con fallback sin Google por un problema transitorio en optimizacion."
+          : "Ruta optimizada generada. Revisa el resultado y confirma si esta correcta.",
+      );
+      logAudit({
+        action: "generar_ruta",
+        outcome: fallbackUsed ? "info" : "ok",
+        detail: fallbackUsed
+          ? `Fallback sin Google aplicado. Rutas: ${result.routes.length} · Plan: ${result.savedPlanId ?? "sin persistir"}`
+          : `Rutas: ${result.routes.length} · Plan: ${result.savedPlanId ?? "sin persistir"}`,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo generar la ruta.");
+      logAudit({
+        action: "generar_ruta",
+        outcome: "error",
+        detail: err instanceof Error ? err.message : "Error desconocido al generar ruta.",
+      });
     } finally {
       setSubmitting(false);
     }
@@ -289,6 +684,16 @@ export function RoutingRoutesPanel() {
       return;
     }
 
+    if (operationStage === "borrador") {
+      setError("Valida la corrida antes de confirmar el plan.");
+      logAudit({
+        action: "confirmar_plan",
+        outcome: "error",
+        detail: "Se intento confirmar un plan en estado borrador.",
+      });
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
     setOkMessage(null);
@@ -296,68 +701,49 @@ export function RoutingRoutesPanel() {
     try {
       const result = await routingService.confirmPlan(generatedPlan.savedPlanId);
       await loadData();
+      setOperationStage("confirmado");
       setOkMessage(result.message || "Plan confirmado.");
+      logAudit({
+        action: "confirmar_plan",
+        outcome: "ok",
+        detail: `Plan confirmado: ${generatedPlan.savedPlanId}`,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo confirmar el plan generado.");
+      logAudit({
+        action: "confirmar_plan",
+        outcome: "error",
+        detail: err instanceof Error ? err.message : "Error desconocido al confirmar plan.",
+      });
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleOpenGeneratedPlan = async (planId: string) => {
-    setSubmitting(true);
-    setError(null);
-    setOkMessage(null);
+  const handleSetOperationStage = (nextStage: OperationStage) => {
+    const currentStage = operationStage;
 
-    try {
-      const response = await routingService.getPlan(planId);
-      const mapped = mapPlanToSimulation(response.data);
-      setGeneratedPlan(mapped);
-      setSelectedCrewId(mapped.routes[0]?.crewId ?? "");
-      setWizardStep(4);
-      setOkMessage(`Plan cargado: ${response.data.id}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo abrir el plan generado.");
-    } finally {
-      setSubmitting(false);
+    const rank: Record<OperationStage, number> = {
+      borrador: 1,
+      validado: 2,
+      confirmado: 3,
+      despachado: 4,
+      cerrado: 5,
+    };
+
+    if (rank[nextStage] < rank[currentStage]) {
+      setError("No se puede retroceder el estado operativo de la corrida.");
+      return;
     }
-  };
 
-  const handleConfirmExistingPlan = async (planId: string) => {
-    setSubmitting(true);
     setError(null);
-    setOkMessage(null);
-
-    try {
-      const result = await routingService.confirmPlan(planId);
-      await loadData();
-      setOkMessage(result.message || "Plan confirmado.");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo confirmar el plan.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleDeleteGeneratedPlan = async (planId: string) => {
-    setSubmitting(true);
-    setError(null);
-    setOkMessage(null);
-
-    try {
-      await routingService.deletePlan(planId);
-      if (generatedPlan?.savedPlanId === planId) {
-        setGeneratedPlan(null);
-        setSelectedCrewId("");
-        setWizardStep(3);
-      }
-      await loadData();
-      setOkMessage("Plan de rutas eliminado.");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo eliminar el plan de rutas.");
-    } finally {
-      setSubmitting(false);
-    }
+    setOperationStage(nextStage);
+    setOkMessage(`Estado operativo actualizado a ${OPERATION_STAGE_LABELS[nextStage]}.`);
+    logAudit({
+      action: "estado_operativo",
+      outcome: "info",
+      detail: `Cambio de estado: ${OPERATION_STAGE_LABELS[currentStage]} -> ${OPERATION_STAGE_LABELS[nextStage]}`,
+    });
   };
 
   return (
@@ -400,11 +786,16 @@ export function RoutingRoutesPanel() {
           <div className={styles.fieldGrid}>
             <label className={styles.field} htmlFor="route-area-filter">
               <span>Area</span>
-              <select id="route-area-filter" className={styles.select} value={selectedArea} onChange={(event) => setSelectedArea(event.target.value)}>
+              <select
+                id="route-area-filter"
+                className={styles.select}
+                value={selectedArea}
+                onChange={(event) => setSelectedArea(event.target.value as AreaFilter)}
+              >
                 <option value="all">Todas</option>
                 {availableAreas.map((area) => (
                   <option key={area} value={area}>
-                    {area}
+                    {getCategoryLabel(area)}
                   </option>
                 ))}
               </select>
@@ -412,7 +803,17 @@ export function RoutingRoutesPanel() {
 
             <label className={styles.field} htmlFor="route-plan-selector">
               <span>Plan</span>
-              <select id="route-plan-selector" className={styles.select} value={selectedPlanId} onChange={(event) => setSelectedPlanId(event.target.value)}>
+              <select
+                id="route-plan-selector"
+                className={styles.select}
+                value={selectedPlanId}
+                onChange={(event) => {
+                  const nextPlanId = event.target.value;
+                  setSelectedPlanId(nextPlanId);
+                  const nextPlan = plans.find((plan) => plan.id === nextPlanId);
+                  setSelectedUserId(nextPlan?.userId ?? "");
+                }}
+              >
                 <option value="">Seleccionar plan</option>
                 {visiblePlans.map((plan) => (
                   <option key={plan.id} value={plan.id}>
@@ -427,7 +828,7 @@ export function RoutingRoutesPanel() {
             <div className={styles.grid}>
               <div className={styles.metric}>
                 <span>Areas</span>
-                <strong>{selectedPlan.categorias.join(", ")}</strong>
+                <strong>{selectedPlan.categorias.map((categoria) => getCategoryLabel(categoria)).join(", ")}</strong>
               </div>
               <div className={styles.metric}>
                 <span>Usuario base</span>
@@ -444,8 +845,34 @@ export function RoutingRoutesPanel() {
             </div>
           )}
 
+          {selectedPlan && (
+            <div className={styles.formSection}>
+              <h4 className={styles.sectionTitle}>Validacion previa</h4>
+              <div className={styles.grid}>
+                {preflightChecks.map((check) => (
+                  <div key={check.key} className={styles.metric}>
+                    <span>
+                      {check.status === "ok"
+                        ? "Listo"
+                        : check.status === "warning"
+                          ? "Atencion"
+                          : "Pendiente"}
+                    </span>
+                    <strong>{check.label}</strong>
+                    <span className={styles.subtle}>{check.detail}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className={styles.actionsRow}>
-            <button className={styles.buttonPrimary} type="button" onClick={handleContinueToLoad} disabled={!selectedPlan || submitting || loading}>
+            <button
+              className={styles.buttonPrimary}
+              type="button"
+              onClick={handleContinueToLoad}
+              disabled={!selectedPlan || submitting || loading || hasPreflightBlockingErrors}
+            >
               Continuar al paso 2
             </button>
           </div>
@@ -462,18 +889,86 @@ export function RoutingRoutesPanel() {
             </div>
 
             <div className={styles.actionsRow}>
+              <button className={styles.buttonSecondary} type="button" onClick={handleEstimateCoverage} disabled={submitting}>
+                Estimar cobertura
+              </button>
               <button className={styles.buttonPrimary} type="button" onClick={handleLoadClaims} disabled={submitting}>
                 Cargar reclamos
               </button>
             </div>
 
-            {loadedClaims && (
-              <div className={styles.grid}>
-                <div className={styles.metric}><span>Reclamos leidos</span><strong>{loadedClaims.summary.totalFetched}</strong></div>
-                <div className={styles.metric}><span>Candidatos</span><strong>{loadedClaims.summary.totalCandidateAfterRules}</strong></div>
-                <div className={styles.metric}><span>Asignables</span><strong>{loadedClaims.summary.totalAssigned}</strong></div>
-                <div className={styles.metric}><span>No asignados</span><strong>{loadedClaims.summary.totalUnassigned}</strong></div>
+            {coverageEstimate && (
+              <div className={styles.formSection}>
+                <h4 className={styles.sectionTitle}>Estimacion previa</h4>
+                <div className={styles.grid}>
+                  <div className={styles.metric}><span>Reclamos leidos</span><strong>{coverageEstimate.summary.totalFetched}</strong></div>
+                  <div className={styles.metric}><span>Candidatos</span><strong>{coverageEstimate.summary.totalCandidateAfterRules}</strong></div>
+                  <div className={styles.metric}><span>Asignables estimados</span><strong>{coverageEstimate.summary.totalAssigned}</strong></div>
+                  <div className={styles.metric}><span>No asignados estimados</span><strong>{coverageEstimate.summary.totalUnassigned}</strong></div>
+                </div>
+
+                <div className={styles.tableWrap}>
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>Categoria</th>
+                        <th>Consumo estimado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.keys(coverageEstimate.summary.categoryQuotaConsumption).length === 0 ? (
+                        <tr>
+                          <td colSpan={2}>Sin consumo por categoria para mostrar.</td>
+                        </tr>
+                      ) : (
+                        Object.entries(coverageEstimate.summary.categoryQuotaConsumption).map(([categoria, consumo]) => (
+                          <tr key={categoria}>
+                            <td>{getCategoryLabel(categoria)}</td>
+                            <td>{consumo}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
+            )}
+
+            {loadedClaims && (
+              <>
+                <div className={styles.grid}>
+                  <div className={styles.metric}><span>Reclamos leidos</span><strong>{loadedClaims.summary.totalFetched}</strong></div>
+                  <div className={styles.metric}><span>Candidatos</span><strong>{loadedClaims.summary.totalCandidateAfterRules}</strong></div>
+                  <div className={styles.metric}><span>Asignables</span><strong>{loadedClaims.summary.totalAssigned}</strong></div>
+                  <div className={styles.metric}><span>No asignados</span><strong>{loadedClaims.summary.totalUnassigned}</strong></div>
+                </div>
+
+                {loadedUnassignedByReason.length > 0 && (
+                  <div className={styles.formSection}>
+                    <h4 className={styles.sectionTitle}>No asignados por causa (Paso 2)</h4>
+                    <div className={styles.tableWrap}>
+                      <table className={styles.table}>
+                        <thead>
+                          <tr>
+                            <th>Causa</th>
+                            <th>Cantidad</th>
+                            <th>Accion sugerida</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {loadedUnassignedByReason.map(([reason, count]) => (
+                            <tr key={`loaded-${reason}`}>
+                              <td>{reason}</td>
+                              <td>{count}</td>
+                              <td>{getUnassignedSuggestion(reason)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
@@ -498,7 +993,23 @@ export function RoutingRoutesPanel() {
                 <input id="route-google-optimize" type="checkbox" checked={useGoogleOptimization} onChange={(event) => setUseGoogleOptimization(event.target.checked)} />
                 Usar optimizacion de Google
               </label>
+
+              <label className={styles.checkbox} htmlFor="route-persist-global-rules">
+                <input
+                  id="route-persist-global-rules"
+                  type="checkbox"
+                  checked={persistGlobalRules}
+                  onChange={(event) => setPersistGlobalRules(event.target.checked)}
+                />
+                Sobrescribir reglas globales con esta corrida
+              </label>
             </div>
+
+            {!persistGlobalRules && (
+              <p className={styles.subtle}>
+                Esta corrida usara reglas locales del plan (overrideRules) y no modificara la configuracion global.
+              </p>
+            )}
 
             <div className={styles.actionsRow}>
               <button className={styles.buttonPrimary} type="button" onClick={handleGenerateRoute} disabled={submitting || !selectedUserId}>
@@ -512,12 +1023,74 @@ export function RoutingRoutesPanel() {
           <div className={styles.formSection}>
             <h3 className={styles.sectionTitle}>Paso 4. Revisar y confirmar</h3>
 
+            <div className={styles.formSection}>
+              <h4 className={styles.sectionTitle}>Estado operativo</h4>
+              <div className={styles.grid}>
+                <div className={styles.metric}>
+                  <span>Estado actual</span>
+                  <strong>{OPERATION_STAGE_LABELS[operationStage]}</strong>
+                </div>
+              </div>
+              <div className={styles.actionsRow}>
+                <button
+                  className={styles.buttonSecondary}
+                  type="button"
+                  onClick={() => handleSetOperationStage("validado")}
+                  disabled={submitting || operationStage !== "borrador"}
+                >
+                  Marcar validado
+                </button>
+                <button
+                  className={styles.buttonSecondary}
+                  type="button"
+                  onClick={() => handleSetOperationStage("despachado")}
+                  disabled={submitting || operationStage !== "confirmado"}
+                >
+                  Marcar despachado
+                </button>
+                <button
+                  className={styles.buttonSecondary}
+                  type="button"
+                  onClick={() => handleSetOperationStage("cerrado")}
+                  disabled={submitting || operationStage !== "despachado"}
+                >
+                  Cerrar corrida
+                </button>
+              </div>
+            </div>
+
             <div className={styles.grid}>
               <div className={styles.metric}><span>Reclamos leidos</span><strong>{generatedPlan.summary.totalFetched}</strong></div>
               <div className={styles.metric}><span>Asignados</span><strong>{generatedPlan.summary.totalAssigned}</strong></div>
               <div className={styles.metric}><span>No asignados</span><strong>{generatedPlan.summary.totalUnassigned}</strong></div>
               <div className={styles.metric}><span>Rutas generadas</span><strong>{generatedPlan.routes.length}</strong></div>
             </div>
+
+            {generatedUnassignedByReason.length > 0 && (
+              <div className={styles.formSection}>
+                <h4 className={styles.sectionTitle}>No asignados por causa</h4>
+                <div className={styles.tableWrap}>
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>Causa</th>
+                        <th>Cantidad</th>
+                        <th>Accion sugerida</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {generatedUnassignedByReason.map(([reason, count]) => (
+                        <tr key={`generated-${reason}`}>
+                          <td>{reason}</td>
+                          <td>{count}</td>
+                          <td>{getUnassignedSuggestion(reason)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
 
             {generatedPlan.routes.length > 0 && (
               <div className={styles.routePickerWrap}>
@@ -563,7 +1136,7 @@ export function RoutingRoutesPanel() {
                       <tr key={`${stop.reclamoId}-${stop.sequence}`}>
                         <td>{stop.sequence}</td>
                         <td>{stop.reclamoId}</td>
-                        <td>{stop.categoria}</td>
+                        <td>{getCategoryLabel(stop.categoria)}</td>
                         <td>{stop.direccion}</td>
                         <td>{stop.distanceFromPreviousKm}</td>
                         <td>{stop.durationFromPreviousMin}</td>
@@ -579,67 +1152,96 @@ export function RoutingRoutesPanel() {
                 Confirmar plan generado
               </button>
             </div>
+
+            {runHistory.length > 0 && (
+              <div className={styles.formSection}>
+                <h4 className={styles.sectionTitle}>Calidad de corridas (historial)</h4>
+                <div className={styles.tableWrap}>
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>Fecha</th>
+                        <th>Asignacion</th>
+                        <th>Asignados / Leidos</th>
+                        <th>No asignados</th>
+                        <th>Distancia total (km)</th>
+                        <th>Duracion total (min)</th>
+                        <th>Motor</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {runHistory.map((run) => (
+                        <tr key={run.id}>
+                          <td>{new Date(run.at).toLocaleString()}</td>
+                          <td>{run.assignmentRate}%</td>
+                          <td>{run.totalAssigned} / {run.totalFetched}</td>
+                          <td>{run.totalUnassigned}</td>
+                          <td>{run.totalDistanceKm.toFixed(2)}</td>
+                          <td>{run.totalDurationMin.toFixed(1)}</td>
+                          <td>
+                            {run.withGoogle
+                              ? run.fallbackUsed
+                                ? "Google -> Fallback"
+                                : "Google"
+                              : "Interno"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {auditTrail.length > 0 && (
+          <div className={styles.formSection}>
+            <h3 className={styles.sectionTitle}>Bitacora de la corrida</h3>
+            <div className={styles.tableWrap}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Accion</th>
+                    <th>Resultado</th>
+                    <th>Detalle</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {auditTrail.map((entry) => (
+                    <tr key={entry.id}>
+                      <td>{new Date(entry.at).toLocaleString()}</td>
+                      <td>{entry.action}</td>
+                      <td>{entry.outcome}</td>
+                      <td>{entry.detail}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </article>
-
-      <article className={styles.card}>
-        <div className={styles.head}>
-          <div>
-            <h3>Rutas generadas</h3>
-            <span>Listado separado para revisar, confirmar o eliminar rutas generadas por error.</span>
-          </div>
-        </div>
-
-        <div className={styles.tableWrap}>
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th>Fecha</th>
-                <th>Estado</th>
-                <th>Asignados</th>
-                <th>No asignados</th>
-                <th>Rutas</th>
-                <th>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={6}>Cargando rutas generadas...</td>
-                </tr>
-              ) : routePlans.length === 0 ? (
-                <tr>
-                  <td colSpan={6}>Todavia no hay rutas generadas.</td>
-                </tr>
-              ) : (
-                routePlans.map((plan) => (
-                  <tr key={plan.id}>
-                    <td>{new Date(plan.planningDate).toLocaleString()}</td>
-                    <td>{plan.status}</td>
-                    <td>{plan.totalAssigned}</td>
-                    <td>{plan.totalUnassigned}</td>
-                    <td>{plan.routes.map((route) => `${route.nombre} (${route.assignedClaims})`).join(", ") || "-"}</td>
-                    <td>
-                      <div className={styles.actionsRow}>
-                        <button className={styles.buttonSecondary} type="button" onClick={() => void handleOpenGeneratedPlan(plan.id)} disabled={submitting}>
-                          Ver
-                        </button>
-                        <button className={styles.buttonSecondary} type="button" onClick={() => void handleConfirmExistingPlan(plan.id)} disabled={submitting || plan.status === "confirmed"}>
-                          Confirmar
-                        </button>
-                        <button className={styles.buttonSecondary} type="button" onClick={() => void handleDeleteGeneratedPlan(plan.id)} disabled={submitting}>
-                          Eliminar
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </article>
     </section>
   );
+}
+
+function normalizeCategory(value: string): RoutingCategoryRule["categoria"] | null {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return CATEGORY_ALIASES[normalized] ?? null;
+}
+
+function getPlanCategories(plan: RoutingAreaPlan): RoutingCategoryRule["categoria"][] {
+  const categories = plan.categorias
+    .map((categoria) => normalizeCategory(categoria))
+    .filter((categoria): categoria is RoutingCategoryRule["categoria"] => Boolean(categoria));
+
+  return Array.from(new Set(categories));
 }

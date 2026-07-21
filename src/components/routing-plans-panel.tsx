@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { accessControlService, type ManagedUser } from "@/services/access-control.service";
+import { CATEGORIA_LABELS } from "@/services/reclamos.service";
 import { routingService, type RoutingAreaPlan } from "@/services/routing.service";
 import styles from "./routing-panel.module.css";
 
@@ -18,6 +19,23 @@ const ROUTING_CATEGORY_OPTIONS = [
   "otros",
 ];
 
+const CATEGORY_ALIASES: Record<string, string> = {
+  agua_y_cloacas: "agua_y_cloacas",
+  aguas_y_cloacas: "agua_y_cloacas",
+  agua_cloacas: "agua_y_cloacas",
+  aguas_cloacas: "agua_y_cloacas",
+  alumbrado: "alumbrado",
+  baches_y_pavimento: "baches_y_pavimento",
+  baches_pavimento: "baches_y_pavimento",
+  arbolado: "arbolado",
+  residuos: "residuos",
+  electricidad: "electricidad",
+  gas: "gas",
+  transporte: "transporte",
+  infraestructura: "infraestructura",
+  otros: "otros",
+};
+
 const EMPTY_FORM = {
   id: "",
   name: "",
@@ -32,12 +50,44 @@ const EMPTY_FORM = {
 
 type PlanFormState = typeof EMPTY_FORM;
 
+function normalizeCategory(value: string): string {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
+  return CATEGORY_ALIASES[normalized] ?? normalized;
+}
+
+function canonicalizeCategories(categories: string[]): string[] {
+  const canonicalSet = new Set(ROUTING_CATEGORY_OPTIONS);
+  const canonical = categories
+    .map((categoria) => normalizeCategory(categoria))
+    .filter((categoria): categoria is (typeof ROUTING_CATEGORY_OPTIONS)[number] => canonicalSet.has(categoria));
+
+  return Array.from(new Set(canonical));
+}
+
+function getCategoryLabel(value: string): string {
+  const normalized = normalizeCategory(value) as keyof typeof CATEGORIA_LABELS;
+  if (normalized in CATEGORIA_LABELS) {
+    return CATEGORIA_LABELS[normalized];
+  }
+
+  return value
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 function mapPlanToForm(plan: RoutingAreaPlan): PlanFormState {
   return {
     id: plan.id,
     name: plan.name,
     userId: plan.userId,
-    categorias: plan.categorias,
+    categorias: canonicalizeCategories(plan.categorias),
     originAddress: plan.originAddress ?? "",
     originLat: plan.originLat,
     originLng: plan.originLng,
@@ -62,7 +112,7 @@ export function RoutingPlansPanel() {
     const areas = new Set<string>();
     for (const plan of plans) {
       for (const categoria of plan.categorias) {
-        areas.add(categoria);
+        areas.add(normalizeCategory(categoria));
       }
     }
     return Array.from(areas).sort();
@@ -75,7 +125,9 @@ export function RoutingPlansPanel() {
         !normalizedSearch ||
         plan.name.toLowerCase().includes(normalizedSearch) ||
         (plan.userName ?? "").toLowerCase().includes(normalizedSearch);
-      const matchesArea = selectedArea === "all" || plan.categorias.includes(selectedArea);
+      const matchesArea =
+        selectedArea === "all" ||
+        plan.categorias.map((categoria) => normalizeCategory(categoria)).includes(selectedArea);
       return matchesSearch && matchesArea;
     });
   }, [plans, search, selectedArea]);
@@ -142,7 +194,9 @@ export function RoutingPlansPanel() {
       return;
     }
 
-    if (form.categorias.length === 0) {
+    const canonicalCategories = canonicalizeCategories(form.categorias);
+
+    if (canonicalCategories.length === 0) {
       setError("Selecciona al menos un area para el plan.");
       return;
     }
@@ -159,7 +213,7 @@ export function RoutingPlansPanel() {
         name: form.name.trim(),
         userId: form.userId,
         userName: selectedUser?.name ?? selectedUser?.email ?? null,
-        categorias: form.categorias,
+        categorias: canonicalCategories,
         originAddress: form.originAddress.trim() || null,
         originLat: form.originLat,
         originLng: form.originLng,
@@ -283,7 +337,7 @@ export function RoutingPlansPanel() {
               <option value="all">Todas</option>
               {availableAreas.map((area) => (
                 <option key={area} value={area}>
-                  {area}
+                  {getCategoryLabel(area)}
                 </option>
               ))}
             </select>
@@ -319,7 +373,7 @@ export function RoutingPlansPanel() {
                 visiblePlans.map((plan) => (
                   <tr key={plan.id}>
                     <td>{plan.name}</td>
-                    <td>{plan.categorias.join(", ")}</td>
+                    <td>{plan.categorias.map((categoria) => getCategoryLabel(categoria)).join(", ")}</td>
                     <td>{plan.userName || plan.userId}</td>
                     <td>{plan.originAddress || `${plan.originLat.toFixed(4)}, ${plan.originLng.toFixed(4)}`}</td>
                     <td>{plan.dailyByUser} / {plan.dailyByCategory}</td>
@@ -455,7 +509,7 @@ export function RoutingPlansPanel() {
                     return (
                       <label key={categoria} className={styles.checkbox}>
                         <input type="checkbox" checked={checked} onChange={(event) => toggleCategoria(categoria, event.target.checked)} />
-                        <span>{categoria}</span>
+                        <span>{getCategoryLabel(categoria)}</span>
                       </label>
                     );
                   })}

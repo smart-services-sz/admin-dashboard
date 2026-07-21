@@ -7,6 +7,7 @@ import { AccessManagementPanel, type AccessSection } from "./access-management-p
 import { ReclamosPanel } from "./reclamos-panel";
 import { RoutingPlansPanel } from "./routing-plans-panel";
 import { RoutingRoutesPanel } from "./routing-routes-panel";
+import { RoutingGeneratedPanel } from "./routing-generated-panel";
 import { LogoutButton } from "@/components/logout-button";
 import styles from "./admin-dashboard.module.css";
 
@@ -14,6 +15,7 @@ type Section =
   | "reclamos"
   | "ruteo-planes"
   | "ruteo-rutas"
+  | "ruteo-generadas"
   | "metricas"
   | AccessSection;
 type Theme = "light" | "dark";
@@ -22,6 +24,7 @@ const sectionTitles: Record<Section, string> = {
   reclamos: "Gestion de reclamos",
   "ruteo-planes": "Ruteo y asignacion · Planes",
   "ruteo-rutas": "Ruteo y asignacion · Rutas",
+  "ruteo-generadas": "Ruteo y asignacion · Rutas generadas",
   metricas: "Metricas operativas",
   users: "Administracion de usuarios",
   roles: "Administracion de roles",
@@ -130,8 +133,6 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [activeSection, setActiveSection] = useState<Section>("reclamos");
 
-  const isRoutingSection = activeSection === "ruteo-planes" || activeSection === "ruteo-rutas";
-
   const [theme, setTheme] = useState<Theme>(() => {
     if (typeof window === "undefined") {
       return "light";
@@ -188,6 +189,10 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
 
     if (activeSection === "ruteo-rutas") {
       return <RoutingRoutesPanel />;
+    }
+
+    if (activeSection === "ruteo-generadas") {
+      return <RoutingGeneratedPanel />;
     }
 
     if (activeSection === "reclamos" && !canViewReclamos) {
@@ -279,6 +284,19 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
             >
               <RoutingIcon />
               <span className={styles.navLabel}>Rutas</span>
+            </button>
+          )}
+          {canViewReclamos && (
+            <button
+              type="button"
+              data-active={activeSection === "ruteo-generadas"}
+              onClick={() => {
+                setActiveSection("ruteo-generadas");
+                setIsSidebarOpen(false);
+              }}
+            >
+              <RoutingIcon />
+              <span className={styles.navLabel}>Rutas generadas</span>
             </button>
           )}
           <button
