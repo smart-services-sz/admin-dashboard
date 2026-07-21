@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/auth-context";
 import {
   reclamosService,
@@ -24,6 +24,12 @@ type EditForm = {
   observaciones: string;
 };
 
+type ToastMessage = {
+  id: string;
+  kind: "success" | "error" | "info";
+  text: string;
+};
+
 function emptyEditForm(reclamo: Reclamo): EditForm {
   return {
     estado: reclamo.estado,
@@ -43,6 +49,7 @@ export function ReclamosPanel() {
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [okMessage, setOkMessage] = useState<string | null>(null);
 
   const [filterEstado, setFilterEstado] = useState<ReclamoEstado | "">("");
   const [filterCategoria, setFilterCategoria] = useState<ReclamoCategoria | "">("");
@@ -52,6 +59,19 @@ export function ReclamosPanel() {
   const [editForm, setEditForm] = useState<EditForm | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  const lastErrorToastRef = useRef<string | null>(null);
+  const lastSaveErrorToastRef = useRef<string | null>(null);
+  const lastOkToastRef = useRef<string | null>(null);
+
+  const pushToast = (kind: ToastMessage["kind"], text: string) => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setToasts((current) => [...current, { id, kind, text }].slice(-4));
+    setTimeout(() => {
+      setToasts((current) => current.filter((toast) => toast.id !== id));
+    }, 3800);
+  };
 
   const LIMIT = 20;
 
@@ -85,12 +105,41 @@ export function ReclamosPanel() {
   );
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPage(1);
   }, [filterEstado, filterCategoria, filterSearch]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchReclamos(page);
   }, [fetchReclamos, page]);
+
+  useEffect(() => {
+    if (!error || error === lastErrorToastRef.current) {
+      return;
+    }
+
+    lastErrorToastRef.current = error;
+    pushToast("error", error);
+  }, [error]);
+
+  useEffect(() => {
+    if (!saveError || saveError === lastSaveErrorToastRef.current) {
+      return;
+    }
+
+    lastSaveErrorToastRef.current = saveError;
+    pushToast("error", saveError);
+  }, [saveError]);
+
+  useEffect(() => {
+    if (!okMessage || okMessage === lastOkToastRef.current) {
+      return;
+    }
+
+    lastOkToastRef.current = okMessage;
+    pushToast("success", okMessage);
+  }, [okMessage]);
 
   const startEdit = (reclamo: Reclamo) => {
     setEditingId(reclamo.id);
@@ -116,6 +165,7 @@ export function ReclamosPanel() {
         observaciones: editForm.observaciones,
       };
       await reclamosService.updateReclamo(editingId, payload);
+      setOkMessage("Reclamo actualizado correctamente.");
       cancelEdit();
       await fetchReclamos(page);
     } catch (err) {
@@ -129,6 +179,7 @@ export function ReclamosPanel() {
     if (!confirm("¿Eliminar este reclamo? Esta acción no se puede deshacer.")) return;
     try {
       await reclamosService.deleteReclamo(id);
+      setOkMessage("Reclamo eliminado correctamente.");
       if (editingId === id) cancelEdit();
       await fetchReclamos(page);
     } catch (err) {
@@ -142,6 +193,14 @@ export function ReclamosPanel() {
 
   return (
     <>
+      <div className={styles.toastViewport} aria-live="polite" aria-atomic="true">
+        {toasts.map((toast) => (
+          <div key={toast.id} className={styles.toast} data-kind={toast.kind}>
+            {toast.text}
+          </div>
+        ))}
+      </div>
+
       <section className={styles.metricsGrid}>
         <article className={styles.metricCard}>
           <p>Total (página)</p>
@@ -199,12 +258,6 @@ export function ReclamosPanel() {
           {loading ? "Cargando..." : "Actualizar"}
         </button>
       </div>
-
-      {error && (
-        <div className={styles.noticeBanner} data-tone="error">
-          <strong>Error:</strong> {error}
-        </div>
-      )}
 
       <section className={styles.contentGrid}>
         {/* List */}
@@ -363,12 +416,6 @@ export function ReclamosPanel() {
                   placeholder="Notas internas del agente..."
                 />
               </label>
-
-              {saveError && (
-                <div className={styles.noticeBanner} data-tone="error">
-                  {saveError}
-                </div>
-              )}
 
               <button
                 className={styles.submitButton}

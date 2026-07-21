@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { accessControlService, type ManagedUser } from "@/services/access-control.service";
 import { CATEGORIA_LABELS } from "@/services/reclamos.service";
 import { routingService, type RoutingAreaPlan } from "@/services/routing.service";
@@ -44,11 +44,19 @@ const EMPTY_FORM = {
   originAddress: "",
   originLat: -34.55,
   originLng: -58.45,
-  dailyByUser: 15,
+  dailyByUser: 20,
   dailyByCategory: 20,
 };
 
+const MAX_CLAIMS_PER_ROUTE = 20;
+
 type PlanFormState = typeof EMPTY_FORM;
+
+type ToastMessage = {
+  id: string;
+  kind: "success" | "error" | "info";
+  text: string;
+};
 
 function normalizeCategory(value: string): string {
   const normalized = value
@@ -107,6 +115,18 @@ export function RoutingPlansPanel() {
   const [selectedArea, setSelectedArea] = useState("all");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [form, setForm] = useState<PlanFormState>(EMPTY_FORM);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  const lastErrorToastRef = useRef<string | null>(null);
+  const lastOkToastRef = useRef<string | null>(null);
+
+  const pushToast = (kind: ToastMessage["kind"], text: string) => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setToasts((current) => [...current, { id, kind, text }].slice(-4));
+    setTimeout(() => {
+      setToasts((current) => current.filter((toast) => toast.id !== id));
+    }, 3800);
+  };
 
   const availableAreas = useMemo(() => {
     const areas = new Set<string>();
@@ -152,8 +172,27 @@ export function RoutingPlansPanel() {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadData();
   }, []);
+
+  useEffect(() => {
+    if (!error || error === lastErrorToastRef.current) {
+      return;
+    }
+
+    lastErrorToastRef.current = error;
+    pushToast("error", error);
+  }, [error]);
+
+  useEffect(() => {
+    if (!okMessage || okMessage === lastOkToastRef.current) {
+      return;
+    }
+
+    lastOkToastRef.current = okMessage;
+    pushToast("success", okMessage);
+  }, [okMessage]);
 
   const openCreateModal = () => {
     setForm(EMPTY_FORM);
@@ -191,6 +230,16 @@ export function RoutingPlansPanel() {
 
     if (!form.userId) {
       setError("Selecciona un usuario operativo.");
+      return;
+    }
+
+    if (form.dailyByUser < 1 || form.dailyByUser > MAX_CLAIMS_PER_ROUTE) {
+      setError(`El limite por usuario debe estar entre 1 y ${MAX_CLAIMS_PER_ROUTE} reclamos.`);
+      return;
+    }
+
+    if (form.dailyByCategory < 1 || form.dailyByCategory > MAX_CLAIMS_PER_ROUTE) {
+      setError(`El limite por area debe estar entre 1 y ${MAX_CLAIMS_PER_ROUTE} reclamos.`);
       return;
     }
 
@@ -344,8 +393,13 @@ export function RoutingPlansPanel() {
           </label>
         </div>
 
-        {okMessage && <div className={styles.statusOk}>{okMessage}</div>}
-        {error && <div className={styles.statusError}>{error}</div>}
+        <div className={styles.toastViewport} aria-live="polite" aria-atomic="true">
+          {toasts.map((toast) => (
+            <div key={toast.id} className={styles.toast} data-kind={toast.kind}>
+              {toast.text}
+            </div>
+          ))}
+        </div>
 
         <div className={styles.tableWrap}>
           <table className={styles.table}>
@@ -478,9 +532,11 @@ export function RoutingPlansPanel() {
                     id="routing-plan-daily-user"
                     type="number"
                     min={1}
+                    max={MAX_CLAIMS_PER_ROUTE}
                     value={form.dailyByUser}
-                    onChange={(event) => setForm((current) => ({ ...current, dailyByUser: Number(event.target.value || 1) }))}
+                    onChange={(event) => setForm((current) => ({ ...current, dailyByUser: Math.min(Number(event.target.value || 1), MAX_CLAIMS_PER_ROUTE) }))}
                   />
+                  <small className={styles.subtle}>Maximo permitido: {MAX_CLAIMS_PER_ROUTE} reclamos por ruta.</small>
                 </label>
 
                 <label className={styles.field} htmlFor="routing-plan-daily-area">
@@ -489,9 +545,11 @@ export function RoutingPlansPanel() {
                     id="routing-plan-daily-area"
                     type="number"
                     min={1}
+                    max={MAX_CLAIMS_PER_ROUTE}
                     value={form.dailyByCategory}
-                    onChange={(event) => setForm((current) => ({ ...current, dailyByCategory: Number(event.target.value || 1) }))}
+                    onChange={(event) => setForm((current) => ({ ...current, dailyByCategory: Math.min(Number(event.target.value || 1), MAX_CLAIMS_PER_ROUTE) }))}
                   />
+                  <small className={styles.subtle}>Maximo permitido: {MAX_CLAIMS_PER_ROUTE} reclamos por categoria.</small>
                 </label>
               </div>
 

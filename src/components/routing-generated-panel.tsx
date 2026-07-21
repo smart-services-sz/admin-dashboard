@@ -22,6 +22,22 @@ function loadGoogleMapsScript(apiKey: string): Promise<void> {
         Map: new (...args: unknown[]) => unknown;
         Marker: new (...args: unknown[]) => unknown;
         Polyline: new (...args: unknown[]) => unknown;
+        DirectionsService: new () => {
+          route: (
+            request: {
+              origin: { lat: number; lng: number };
+              destination: { lat: number; lng: number };
+              waypoints?: Array<{ location: { lat: number; lng: number }; stopover: boolean }>;
+              optimizeWaypoints?: boolean;
+              travelMode: string;
+            },
+          ) => Promise<unknown>;
+        };
+        DirectionsRenderer: new (options: {
+          map: unknown;
+          suppressMarkers?: boolean;
+          polylineOptions?: { strokeColor?: string; strokeOpacity?: number; strokeWeight?: number };
+        }) => { setDirections: (result: unknown) => void };
         LatLngBounds: new (...args: unknown[]) => {
           extend: (point: { lat: number; lng: number }) => void;
         };
@@ -100,8 +116,19 @@ export function RoutingGeneratedPanel() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [okMessage, setOkMessage] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<Array<{ id: string; kind: "success" | "error" | "info"; text: string }>>([]);
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const googleMapsKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
+  const lastErrorToastRef = useRef<string | null>(null);
+  const lastOkToastRef = useRef<string | null>(null);
+
+  const pushToast = (kind: "success" | "error" | "info", text: string) => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setToasts((current) => [...current, { id, kind, text }].slice(-4));
+    setTimeout(() => {
+      setToasts((current) => current.filter((toast) => toast.id !== id));
+    }, 3800);
+  };
 
   const selectedRoute = useMemo(() => {
     if (!selectedPlan?.routes?.length) return null;
@@ -144,8 +171,22 @@ export function RoutingGeneratedPanel() {
                 options: { center: { lat: number; lng: number }; zoom: number; mapTypeControl?: boolean; streetViewControl?: boolean },
               ) => { fitBounds: (bounds: { extend: (point: { lat: number; lng: number }) => void }) => void; setZoom: (zoom: number) => void };
               Marker: new (options: { map: unknown; position: { lat: number; lng: number }; label?: string; title?: string }) => unknown;
-              Polyline: new (options: { map: unknown; path: Array<{ lat: number; lng: number }>; geodesic?: boolean; strokeColor?: string; strokeOpacity?: number; strokeWeight?: number }) => unknown;
+              DirectionsService: new () => {
+                route: (request: {
+                  origin: { lat: number; lng: number };
+                  destination: { lat: number; lng: number };
+                  waypoints?: Array<{ location: { lat: number; lng: number }; stopover: boolean }>;
+                  optimizeWaypoints?: boolean;
+                  travelMode: string;
+                }) => Promise<unknown>;
+              };
+              DirectionsRenderer: new (options: {
+                map: unknown;
+                suppressMarkers?: boolean;
+                polylineOptions?: { strokeColor?: string; strokeOpacity?: number; strokeWeight?: number };
+              }) => { setDirections: (result: unknown) => void };
               LatLngBounds: new () => { extend: (point: { lat: number; lng: number }) => void };
+              TravelMode: { DRIVING: string };
             };
           };
         };
@@ -174,21 +215,41 @@ export function RoutingGeneratedPanel() {
           });
         });
 
-        new maps.Polyline({
-          map,
-          path,
-          geodesic: true,
-          strokeColor: "#1d4ed8",
-          strokeOpacity: 0.9,
-          strokeWeight: 4,
-        });
-
         const bounds = new maps.LatLngBounds();
         path.forEach((point) => bounds.extend(point));
         map.fitBounds(bounds);
 
         if (path.length === 1) {
           map.setZoom(15);
+          return;
+        }
+
+        const directionsService = new maps.DirectionsService();
+        const directionsRenderer = new maps.DirectionsRenderer({
+          map,
+          suppressMarkers: true,
+          polylineOptions: {
+            strokeColor: "#1d4ed8",
+            strokeOpacity: 0.92,
+            strokeWeight: 5,
+          },
+        });
+
+        const waypointLimit = 23;
+        if (path.length - 2 > waypointLimit) {
+          return;
+        }
+
+        const directionsResult = await directionsService.route({
+          origin: path[0],
+          destination: path[path.length - 1],
+          waypoints: path.slice(1, -1).map((point) => ({ location: point, stopover: true })),
+          optimizeWaypoints: false,
+          travelMode: maps.TravelMode.DRIVING,
+        });
+
+        if (!cancelled) {
+          directionsRenderer.setDirections(directionsResult);
         }
       } catch {
         // Si Google Maps falla, mantenemos el resto del panel operativo.
@@ -268,6 +329,24 @@ export function RoutingGeneratedPanel() {
     void loadPlans();
   }, []);
 
+  useEffect(() => {
+    if (!error || error === lastErrorToastRef.current) {
+      return;
+    }
+
+    lastErrorToastRef.current = error;
+    pushToast("error", error);
+  }, [error]);
+
+  useEffect(() => {
+    if (!okMessage || okMessage === lastOkToastRef.current) {
+      return;
+    }
+
+    lastOkToastRef.current = okMessage;
+    pushToast("success", okMessage);
+  }, [okMessage]);
+
   const handleOpenPlan = async (planId: string) => {
     setSubmitting(true);
     setError(null);
@@ -332,8 +411,13 @@ export function RoutingGeneratedPanel() {
           </div>
         </div>
 
-        {okMessage && <div className={styles.statusOk}>{okMessage}</div>}
-        {error && <div className={styles.statusError}>{error}</div>}
+        <div className={styles.toastViewport} aria-live="polite" aria-atomic="true">
+          {toasts.map((toast) => (
+            <div key={toast.id} className={styles.toast} data-kind={toast.kind}>
+              {toast.text}
+            </div>
+          ))}
+        </div>
 
         <div className={styles.toolbarRow}>
           <label className={styles.field} htmlFor="generated-search">

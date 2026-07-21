@@ -29,8 +29,22 @@ function loadGoogleMapsScript(apiKey: string): Promise<void> {
           options: { center: { lat: number; lng: number }; zoom: number; mapTypeControl?: boolean; streetViewControl?: boolean },
         ) => { fitBounds: (bounds: { extend: (point: { lat: number; lng: number }) => void }) => void; setZoom: (zoom: number) => void };
         Marker: new (options: { map: unknown; position: { lat: number; lng: number }; label?: string; title?: string }) => unknown;
-        Polyline: new (options: { map: unknown; path: Array<{ lat: number; lng: number }>; geodesic?: boolean; strokeColor?: string; strokeOpacity?: number; strokeWeight?: number }) => unknown;
+        DirectionsService: new () => {
+          route: (request: {
+            origin: { lat: number; lng: number };
+            destination: { lat: number; lng: number };
+            waypoints?: Array<{ location: { lat: number; lng: number }; stopover: boolean }>;
+            optimizeWaypoints?: boolean;
+            travelMode: string;
+          }) => Promise<unknown>;
+        };
+        DirectionsRenderer: new (options: {
+          map: unknown;
+          suppressMarkers?: boolean;
+          polylineOptions?: { strokeColor?: string; strokeOpacity?: number; strokeWeight?: number };
+        }) => { setDirections: (result: unknown) => void };
         LatLngBounds: new () => { extend: (point: { lat: number; lng: number }) => void };
+        TravelMode: { DRIVING: string };
       };
     };
   };
@@ -110,6 +124,8 @@ const DEFAULT_RULES: UpsertRoutingRulesPayload = {
     },
   ],
 };
+
+const MAX_CLAIMS_PER_ROUTE = 20;
 
 function sanitizeZones(zones: RoutingZoneRule[]) {
   return zones.map((zone) => ({
@@ -488,8 +504,22 @@ export function RoutingRoutesPanel() {
                 options: { center: { lat: number; lng: number }; zoom: number; mapTypeControl?: boolean; streetViewControl?: boolean },
               ) => { fitBounds: (bounds: { extend: (point: { lat: number; lng: number }) => void }) => void; setZoom: (zoom: number) => void };
               Marker: new (options: { map: unknown; position: { lat: number; lng: number }; label?: string; title?: string }) => unknown;
-              Polyline: new (options: { map: unknown; path: Array<{ lat: number; lng: number }>; geodesic?: boolean; strokeColor?: string; strokeOpacity?: number; strokeWeight?: number }) => unknown;
+              DirectionsService: new () => {
+                route: (request: {
+                  origin: { lat: number; lng: number };
+                  destination: { lat: number; lng: number };
+                  waypoints?: Array<{ location: { lat: number; lng: number }; stopover: boolean }>;
+                  optimizeWaypoints?: boolean;
+                  travelMode: string;
+                }) => Promise<unknown>;
+              };
+              DirectionsRenderer: new (options: {
+                map: unknown;
+                suppressMarkers?: boolean;
+                polylineOptions?: { strokeColor?: string; strokeOpacity?: number; strokeWeight?: number };
+              }) => { setDirections: (result: unknown) => void };
               LatLngBounds: new () => { extend: (point: { lat: number; lng: number }) => void };
+              TravelMode: { DRIVING: string };
             };
           };
         };
@@ -517,21 +547,41 @@ export function RoutingRoutesPanel() {
           });
         });
 
-        new maps.Polyline({
-          map,
-          path,
-          geodesic: true,
-          strokeColor: "#0f766e",
-          strokeOpacity: 0.92,
-          strokeWeight: 4,
-        });
-
         const bounds = new maps.LatLngBounds();
         path.forEach((point) => bounds.extend(point));
         map.fitBounds(bounds);
 
         if (path.length === 1) {
           map.setZoom(15);
+          return;
+        }
+
+        const directionsService = new maps.DirectionsService();
+        const directionsRenderer = new maps.DirectionsRenderer({
+          map,
+          suppressMarkers: true,
+          polylineOptions: {
+            strokeColor: "#0f766e",
+            strokeOpacity: 0.92,
+            strokeWeight: 5,
+          },
+        });
+
+        const waypointLimit = 23;
+        if (path.length - 2 > waypointLimit) {
+          return;
+        }
+
+        const directionsResult = await directionsService.route({
+          origin: path[0],
+          destination: path[path.length - 1],
+          waypoints: path.slice(1, -1).map((point) => ({ location: point, stopover: true })),
+          optimizeWaypoints: false,
+          travelMode: maps.TravelMode.DRIVING,
+        });
+
+        if (!cancelled) {
+          directionsRenderer.setDirections(directionsResult);
         }
       } catch {
         // Mantenemos la UI operativa aunque falle la carga del mapa.
@@ -596,7 +646,7 @@ export function RoutingRoutesPanel() {
       const sourceRule = sourceByCategory.get(categoria);
       return {
         categoria,
-        cupoDiario: plan.dailyByCategory,
+        cupoDiario: Math.min(plan.dailyByCategory, MAX_CLAIMS_PER_ROUTE),
         pesoPrioridad: sourceRule?.pesoPrioridad ?? 1,
       };
     });
@@ -613,7 +663,7 @@ export function RoutingRoutesPanel() {
           userId: selectedUser.id,
           nombre: selectedUser.name || selectedUser.email,
           userName: selectedUser.name || selectedUser.email,
-          maxReclamosDiarios: plan.dailyByUser,
+          maxReclamosDiarios: Math.min(plan.dailyByUser, MAX_CLAIMS_PER_ROUTE),
           allowedCategorias: categoryRules.map((rule) => rule.categoria),
           allowedZoneIds: [],
           startLat: plan.originLat,
