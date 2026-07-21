@@ -222,6 +222,12 @@ describe("RoutingRoutesPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cargar reclamos" }));
 
     await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Volver al paso 2" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Volver al paso 2" }));
+
+    await waitFor(() => {
       expect(screen.getByText("No asignados por causa (Paso 2)")).toBeInTheDocument();
     });
 

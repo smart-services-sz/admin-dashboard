@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { accessControlService, type ManagedUser } from "@/services/access-control.service";
 import { CATEGORIA_LABELS } from "@/services/reclamos.service";
 import {
@@ -114,6 +114,12 @@ type RunQualitySnapshot = {
   totalDurationMin: number;
 };
 
+type ToastMessage = {
+  id: string;
+  kind: "success" | "error" | "info";
+  text: string;
+};
+
 type OperationStage = "borrador" | "validado" | "confirmado" | "despachado" | "cerrado";
 
 const OPERATION_STAGE_LABELS: Record<OperationStage, string> = {
@@ -167,6 +173,7 @@ export function RoutingRoutesPanel() {
   const [useGoogleOptimization, setUseGoogleOptimization] = useState<boolean>(true);
   const [persistGlobalRules, setPersistGlobalRules] = useState<boolean>(false);
   const [wizardStep, setWizardStep] = useState<1 | 2 | 3 | 4>(1);
+  const [stepDirection, setStepDirection] = useState<"forward" | "backward">("forward");
   const [coverageEstimate, setCoverageEstimate] = useState<RoutingSimulationResult | null>(null);
   const [loadedClaims, setLoadedClaims] = useState<RoutingSimulationResult | null>(null);
   const [generatedPlan, setGeneratedPlan] = useState<RoutingSimulationResult | null>(null);
@@ -174,6 +181,23 @@ export function RoutingRoutesPanel() {
   const [selectedCrewId, setSelectedCrewId] = useState<string>("");
   const [auditTrail, setAuditTrail] = useState<AuditEntry[]>([]);
   const [runHistory, setRunHistory] = useState<RunQualitySnapshot[]>([]);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  const lastErrorToastRef = useRef<string | null>(null);
+  const lastOkToastRef = useRef<string | null>(null);
+
+  const pushToast = (kind: ToastMessage["kind"], text: string) => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setToasts((current) => [...current, { id, kind, text }].slice(-4));
+    setTimeout(() => {
+      setToasts((current) => current.filter((toast) => toast.id !== id));
+    }, 3800);
+  };
+
+  const goToStep = (nextStep: 1 | 2 | 3 | 4) => {
+    setStepDirection(nextStep >= wizardStep ? "forward" : "backward");
+    setWizardStep(nextStep);
+  };
 
   const logAudit = (entry: Omit<AuditEntry, "id" | "at">) => {
     const next: AuditEntry = {
@@ -214,6 +238,22 @@ export function RoutingRoutesPanel() {
     if (!selectedCrewId) return generatedPlan.routes[0];
     return generatedPlan.routes.find((route) => route.crewId === selectedCrewId) ?? generatedPlan.routes[0];
   }, [generatedPlan, selectedCrewId]);
+
+  const maxUnlockedStep = useMemo<1 | 2 | 3 | 4>(() => {
+    if (generatedPlan) {
+      return 4;
+    }
+
+    if (loadedClaims && selectedPlan) {
+      return 3;
+    }
+
+    if (selectedPlan) {
+      return 2;
+    }
+
+    return 1;
+  }, [generatedPlan, loadedClaims, selectedPlan]);
 
   const visibleStops = useMemo(() => {
     return selectedRoute?.stops ?? [];
@@ -324,6 +364,24 @@ export function RoutingRoutesPanel() {
     void loadData();
   }, []);
 
+  useEffect(() => {
+    if (!error || error === lastErrorToastRef.current) {
+      return;
+    }
+
+    lastErrorToastRef.current = error;
+    pushToast("error", error);
+  }, [error]);
+
+  useEffect(() => {
+    if (!okMessage || okMessage === lastOkToastRef.current) {
+      return;
+    }
+
+    lastOkToastRef.current = okMessage;
+    pushToast("success", okMessage);
+  }, [okMessage]);
+
   const resetWizard = () => {
     setSelectedArea("all");
     setSelectedPlanId("");
@@ -331,7 +389,7 @@ export function RoutingRoutesPanel() {
     setMaxFetch(200);
     setUseGoogleOptimization(true);
     setPersistGlobalRules(false);
-    setWizardStep(1);
+    goToStep(1);
     setCoverageEstimate(null);
     setLoadedClaims(null);
     setGeneratedPlan(null);
@@ -426,7 +484,7 @@ export function RoutingRoutesPanel() {
     }
     setCoverageEstimate(null);
     setLoadedClaims(null);
-    setWizardStep(2);
+    goToStep(2);
     logAudit({
       action: "validacion_previa",
       outcome: "ok",
@@ -540,7 +598,7 @@ export function RoutingRoutesPanel() {
       setGeneratedPlan(null);
       setOperationStage("borrador");
       setSelectedCrewId("");
-      setWizardStep(3);
+      goToStep(3);
       setOkMessage("Reclamos cargados. Ya puedes generar la ruta optimizada.");
       logAudit({
         action: "cargar_reclamos",
@@ -628,7 +686,7 @@ export function RoutingRoutesPanel() {
       setGeneratedPlan(result);
       setOperationStage("borrador");
       setSelectedCrewId(result.routes[0]?.crewId ?? "");
-      setWizardStep(4);
+      goToStep(4);
       await loadData();
 
       const totalDistanceKm = result.routes.reduce((acc, route) => acc + route.totalDistanceKm, 0);
@@ -746,6 +804,18 @@ export function RoutingRoutesPanel() {
     });
   };
 
+  const stepDirectionClass = stepDirection === "forward" ? styles.stepForward : styles.stepBackward;
+  const progressPercent = Math.round((wizardStep / 4) * 100);
+
+  const handleStepNavigation = (targetStep: 1 | 2 | 3 | 4) => {
+    if (targetStep > maxUnlockedStep) {
+      pushToast("info", `Completa el paso ${maxUnlockedStep} antes de avanzar al paso ${targetStep}.`);
+      return;
+    }
+
+    goToStep(targetStep);
+  };
+
   return (
     <section className={styles.stack}>
       <article className={styles.card}>
@@ -760,28 +830,90 @@ export function RoutingRoutesPanel() {
         </div>
 
         <div className={styles.guideGrid}>
-          <div className={styles.guideItem} data-active={wizardStep === 1}>
+          <button
+            className={styles.guideItem}
+            data-active={wizardStep === 1}
+            data-complete={wizardStep > 1}
+            data-disabled={false}
+            type="button"
+            onClick={() => handleStepNavigation(1)}
+          >
             <strong>1. Elegir plan</strong>
             <p>Filtra por area y selecciona el plan base.</p>
-          </div>
-          <div className={styles.guideItem} data-active={wizardStep === 2}>
+          </button>
+          <button
+            className={styles.guideItem}
+            data-active={wizardStep === 2}
+            data-complete={wizardStep > 2}
+            data-disabled={maxUnlockedStep < 2}
+            type="button"
+            onClick={() => handleStepNavigation(2)}
+            disabled={maxUnlockedStep < 2}
+          >
             <strong>2. Cargar reclamos</strong>
             <p>Trae los reclamos candidatos para esa corrida.</p>
-          </div>
-          <div className={styles.guideItem} data-active={wizardStep === 3}>
+          </button>
+          <button
+            className={styles.guideItem}
+            data-active={wizardStep === 3}
+            data-complete={wizardStep > 3}
+            data-disabled={maxUnlockedStep < 3}
+            type="button"
+            onClick={() => handleStepNavigation(3)}
+            disabled={maxUnlockedStep < 3}
+          >
             <strong>3. Generar ruta</strong>
             <p>Define usuario operativo y optimiza la ruta.</p>
-          </div>
-          <div className={styles.guideItem} data-active={wizardStep === 4}>
+          </button>
+          <button
+            className={styles.guideItem}
+            data-active={wizardStep === 4}
+            data-complete={false}
+            data-disabled={maxUnlockedStep < 4}
+            type="button"
+            onClick={() => handleStepNavigation(4)}
+            disabled={maxUnlockedStep < 4}
+          >
             <strong>4. Revisar y confirmar</strong>
             <p>Verifica el resultado antes de confirmarlo.</p>
+          </button>
+        </div>
+
+        <div className={styles.stepperSegments} aria-hidden="true">
+          {[1, 2, 3, 4].map((step) => (
+            <button
+              key={`segment-${step}`}
+              className={styles.stepperSegment}
+              type="button"
+              data-active={wizardStep >= step}
+              data-current={wizardStep === step}
+              data-disabled={maxUnlockedStep < step}
+              onClick={() => handleStepNavigation(step as 1 | 2 | 3 | 4)}
+              disabled={maxUnlockedStep < step}
+            />
+          ))}
+        </div>
+
+        <div className={styles.progressWrap} aria-live="polite" aria-atomic="true">
+          <div className={styles.progressMeta}>
+            <span>Progreso del flujo</span>
+            <strong>Paso {wizardStep} de 4</strong>
+          </div>
+          <div className={styles.progressTrack} role="progressbar" aria-valuemin={1} aria-valuemax={4} aria-valuenow={wizardStep} aria-label="Progreso de generacion de rutas">
+            <div className={styles.progressFill} style={{ width: `${progressPercent}%` }} />
           </div>
         </div>
 
-        {okMessage && <div className={styles.statusOk}>{okMessage}</div>}
-        {error && <div className={styles.statusError}>{error}</div>}
+        <div className={styles.toastViewport} aria-live="polite" aria-atomic="true">
+          {toasts.map((toast) => (
+            <div key={toast.id} className={styles.toast} data-kind={toast.kind}>
+              {toast.text}
+            </div>
+          ))}
+        </div>
 
-        <div className={styles.formSection}>
+        {wizardStep === 1 && (
+        <div className={`${styles.formSection} ${styles.stepPanel} ${stepDirectionClass}`}>
           <h3 className={styles.sectionTitle}>Paso 1. Elegir area y plan</h3>
           <div className={styles.fieldGrid}>
             <label className={styles.field} htmlFor="route-area-filter">
@@ -877,9 +1009,10 @@ export function RoutingRoutesPanel() {
             </button>
           </div>
         </div>
+        )}
 
-        {wizardStep >= 2 && selectedPlan && (
-          <div className={styles.formSection}>
+        {wizardStep === 2 && selectedPlan && (
+          <div className={`${styles.formSection} ${styles.stepPanel} ${stepDirectionClass}`}>
             <h3 className={styles.sectionTitle}>Paso 2. Cargar reclamos</h3>
             <div className={styles.fieldGrid}>
               <label className={styles.field} htmlFor="route-max-fetch">
@@ -889,6 +1022,9 @@ export function RoutingRoutesPanel() {
             </div>
 
             <div className={styles.actionsRow}>
+              <button className={styles.buttonSecondary} type="button" onClick={() => goToStep(1)} disabled={submitting}>
+                Volver al paso 1
+              </button>
               <button className={styles.buttonSecondary} type="button" onClick={handleEstimateCoverage} disabled={submitting}>
                 Estimar cobertura
               </button>
@@ -973,8 +1109,8 @@ export function RoutingRoutesPanel() {
           </div>
         )}
 
-        {wizardStep >= 3 && selectedPlan && loadedClaims && (
-          <div className={styles.formSection}>
+        {wizardStep === 3 && selectedPlan && loadedClaims && (
+          <div className={`${styles.formSection} ${styles.stepPanel} ${stepDirectionClass}`}>
             <h3 className={styles.sectionTitle}>Paso 3. Generar ruta optimizada</h3>
             <div className={styles.fieldGrid}>
               <label className={styles.field} htmlFor="route-user-selector">
@@ -1012,6 +1148,9 @@ export function RoutingRoutesPanel() {
             )}
 
             <div className={styles.actionsRow}>
+              <button className={styles.buttonSecondary} type="button" onClick={() => goToStep(2)} disabled={submitting}>
+                Volver al paso 2
+              </button>
               <button className={styles.buttonPrimary} type="button" onClick={handleGenerateRoute} disabled={submitting || !selectedUserId}>
                 Generar ruta optimizada
               </button>
@@ -1019,8 +1158,8 @@ export function RoutingRoutesPanel() {
           </div>
         )}
 
-        {wizardStep >= 4 && generatedPlan && (
-          <div className={styles.formSection}>
+        {wizardStep === 4 && generatedPlan && (
+          <div className={`${styles.formSection} ${styles.stepPanel} ${stepDirectionClass}`}>
             <h3 className={styles.sectionTitle}>Paso 4. Revisar y confirmar</h3>
 
             <div className={styles.formSection}>
@@ -1148,6 +1287,9 @@ export function RoutingRoutesPanel() {
             </div>
 
             <div className={styles.actionsRow}>
+              <button className={styles.buttonSecondary} type="button" onClick={() => goToStep(3)} disabled={submitting}>
+                Volver al paso 3
+              </button>
               <button className={styles.buttonPrimary} type="button" onClick={handleConfirmGeneratedPlan} disabled={submitting || !generatedPlan.savedPlanId}>
                 Confirmar plan generado
               </button>
@@ -1192,34 +1334,34 @@ export function RoutingRoutesPanel() {
                 </div>
               </div>
             )}
-          </div>
-        )}
 
-        {auditTrail.length > 0 && (
-          <div className={styles.formSection}>
-            <h3 className={styles.sectionTitle}>Bitacora de la corrida</h3>
-            <div className={styles.tableWrap}>
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th>Fecha</th>
-                    <th>Accion</th>
-                    <th>Resultado</th>
-                    <th>Detalle</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {auditTrail.map((entry) => (
-                    <tr key={entry.id}>
-                      <td>{new Date(entry.at).toLocaleString()}</td>
-                      <td>{entry.action}</td>
-                      <td>{entry.outcome}</td>
-                      <td>{entry.detail}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            {auditTrail.length > 0 && (
+              <div className={styles.formSection}>
+                <h4 className={styles.sectionTitle}>Bitacora de la corrida</h4>
+                <div className={styles.tableWrap}>
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>Fecha</th>
+                        <th>Accion</th>
+                        <th>Resultado</th>
+                        <th>Detalle</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {auditTrail.map((entry) => (
+                        <tr key={entry.id}>
+                          <td>{new Date(entry.at).toLocaleString()}</td>
+                          <td>{entry.action}</td>
+                          <td>{entry.outcome}</td>
+                          <td>{entry.detail}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </article>

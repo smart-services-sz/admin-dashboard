@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   routingService,
   type RoutingPlanListItem,
@@ -8,6 +8,55 @@ import {
   type RoutingSimulationResult,
 } from "@/services/routing.service";
 import styles from "./routing-panel.module.css";
+
+let googleMapsScriptPromise: Promise<void> | null = null;
+
+function loadGoogleMapsScript(apiKey: string): Promise<void> {
+  if (typeof window === "undefined") {
+    return Promise.resolve();
+  }
+
+  const windowWithGoogle = window as Window & {
+    google?: {
+      maps?: {
+        Map: new (...args: unknown[]) => unknown;
+        Marker: new (...args: unknown[]) => unknown;
+        Polyline: new (...args: unknown[]) => unknown;
+        LatLngBounds: new (...args: unknown[]) => {
+          extend: (point: { lat: number; lng: number }) => void;
+        };
+      };
+    };
+  };
+
+  if (windowWithGoogle.google?.maps) {
+    return Promise.resolve();
+  }
+
+  if (googleMapsScriptPromise) {
+    return googleMapsScriptPromise;
+  }
+
+  googleMapsScriptPromise = new Promise<void>((resolve, reject) => {
+    const existing = document.getElementById("google-maps-script") as HTMLScriptElement | null;
+    if (existing) {
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("error", () => reject(new Error("No se pudo cargar Google Maps")), { once: true });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.id = "google-maps-script";
+    script.async = true;
+    script.defer = true;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}`;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("No se pudo cargar Google Maps"));
+    document.head.appendChild(script);
+  });
+
+  return googleMapsScriptPromise;
+}
 
 function mapPlanToSimulation(plan: RoutingPlanResponse["data"]): RoutingSimulationResult {
   return {
@@ -51,6 +100,8 @@ export function RoutingGeneratedPanel() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [okMessage, setOkMessage] = useState<string | null>(null);
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const googleMapsKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
 
   const selectedRoute = useMemo(() => {
     if (!selectedPlan?.routes?.length) return null;
@@ -59,6 +110,97 @@ export function RoutingGeneratedPanel() {
   }, [selectedPlan, selectedCrewId]);
 
   const visibleStops = useMemo(() => selectedRoute?.stops ?? [], [selectedRoute]);
+
+  const mapStops = useMemo(() => {
+    return visibleStops.filter(
+      (stop) =>
+        Number.isFinite(stop.lat) &&
+        Number.isFinite(stop.lng) &&
+        Math.abs(stop.lat) <= 90 &&
+        Math.abs(stop.lng) <= 180,
+    );
+  }, [visibleStops]);
+
+  useEffect(() => {
+    const container = mapContainerRef.current;
+    if (!container || mapStops.length === 0 || !googleMapsKey) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const renderMap = async () => {
+      try {
+        await loadGoogleMapsScript(googleMapsKey);
+        if (cancelled) {
+          return;
+        }
+
+        const windowWithGoogle = window as Window & {
+          google?: {
+            maps?: {
+              Map: new (
+                element: HTMLElement,
+                options: { center: { lat: number; lng: number }; zoom: number; mapTypeControl?: boolean; streetViewControl?: boolean },
+              ) => { fitBounds: (bounds: { extend: (point: { lat: number; lng: number }) => void }) => void; setZoom: (zoom: number) => void };
+              Marker: new (options: { map: unknown; position: { lat: number; lng: number }; label?: string; title?: string }) => unknown;
+              Polyline: new (options: { map: unknown; path: Array<{ lat: number; lng: number }>; geodesic?: boolean; strokeColor?: string; strokeOpacity?: number; strokeWeight?: number }) => unknown;
+              LatLngBounds: new () => { extend: (point: { lat: number; lng: number }) => void };
+            };
+          };
+        };
+
+        const maps = windowWithGoogle.google?.maps;
+        if (!maps) {
+          return;
+        }
+
+        const center = { lat: mapStops[0].lat, lng: mapStops[0].lng };
+        const map = new maps.Map(container, {
+          center,
+          zoom: 13,
+          mapTypeControl: false,
+          streetViewControl: false,
+        });
+
+        const path = mapStops.map((stop) => ({ lat: stop.lat, lng: stop.lng }));
+
+        path.forEach((position, index) => {
+          new maps.Marker({
+            map,
+            position,
+            label: String(index + 1),
+            title: mapStops[index]?.direccion || `Parada ${index + 1}`,
+          });
+        });
+
+        new maps.Polyline({
+          map,
+          path,
+          geodesic: true,
+          strokeColor: "#1d4ed8",
+          strokeOpacity: 0.9,
+          strokeWeight: 4,
+        });
+
+        const bounds = new maps.LatLngBounds();
+        path.forEach((point) => bounds.extend(point));
+        map.fitBounds(bounds);
+
+        if (path.length === 1) {
+          map.setZoom(15);
+        }
+      } catch {
+        // Si Google Maps falla, mantenemos el resto del panel operativo.
+      }
+    };
+
+    void renderMap();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [googleMapsKey, mapStops]);
 
   const availableStatuses = useMemo(() => {
     return Array.from(new Set(plans.map((plan) => plan.status))).sort();
@@ -331,6 +473,20 @@ export function RoutingGeneratedPanel() {
               <div className={styles.metric}><span>Duracion total (min)</span><strong>{selectedRoute.totalDurationMin}</strong></div>
             </div>
           )}
+
+          <div className={styles.formSection}>
+            <h4 className={styles.sectionTitle}>Mapa de la ruta</h4>
+            {!googleMapsKey ? (
+              <p className={styles.subtle}>Configura NEXT_PUBLIC_GOOGLE_MAPS_API_KEY para visualizar el mapa de Google.</p>
+            ) : mapStops.length === 0 ? (
+              <p className={styles.subtle}>No hay coordenadas validas para dibujar la ruta seleccionada.</p>
+            ) : (
+              <div
+                ref={mapContainerRef}
+                style={{ width: "100%", height: "360px", borderRadius: "12px", overflow: "hidden" }}
+              />
+            )}
+          </div>
 
           <div className={styles.tableWrap}>
             <table className={styles.table}>

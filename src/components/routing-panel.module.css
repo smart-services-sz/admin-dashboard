@@ -45,6 +45,18 @@
   gap: 10px;
 }
 
+.stepPanel {
+  transform-origin: 50% 0%;
+}
+
+.stepForward {
+  animation: step-panel-in-forward 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.stepBackward {
+  animation: step-panel-in-backward 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 .guideGrid {
   display: grid;
   gap: 10px;
@@ -58,12 +70,33 @@
   padding: 10px;
   display: grid;
   gap: 4px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 180ms ease, transform 180ms ease, background 180ms ease;
+}
+
+.guideItem:disabled {
+  cursor: not-allowed;
+}
+
+.guideItem[data-disabled="true"] {
+  opacity: 0.62;
+}
+
+.guideItem:not(:disabled):hover {
+  transform: translateY(-1px);
 }
 
 .guideItem[data-active="true"] {
   border-color: color-mix(in srgb, var(--brand) 55%, var(--line-soft) 45%);
   background: color-mix(in srgb, var(--bg-surface) 78%, #dff8ee 22%);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand) 25%, transparent 75%);
+  animation: guide-active-pulse 260ms ease-out;
+}
+
+.guideItem[data-complete="true"] {
+  border-color: color-mix(in srgb, var(--brand) 42%, var(--line-soft) 58%);
+  background: color-mix(in srgb, var(--bg-surface) 84%, #ecfdf3 16%);
 }
 
 .guideItem strong {
@@ -73,6 +106,74 @@
 .guideItem p {
   color: var(--text-muted);
   font-size: 0.8rem;
+}
+
+.stepperSegments {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.stepperSegment {
+  display: block;
+  height: 6px;
+  border-radius: 999px;
+  border: 1px solid var(--line-soft);
+  background: color-mix(in srgb, var(--bg-surface-subtle) 88%, #ffffff 12%);
+  transition: background 220ms ease, border-color 220ms ease, transform 220ms ease;
+  padding: 0;
+  cursor: pointer;
+}
+
+.stepperSegment:disabled {
+  cursor: not-allowed;
+}
+
+.stepperSegment[data-disabled="true"] {
+  opacity: 0.56;
+}
+
+.stepperSegment[data-active="true"] {
+  background: linear-gradient(90deg, var(--brand) 0%, var(--brand-strong) 100%);
+  border-color: color-mix(in srgb, var(--brand) 55%, var(--line-soft) 45%);
+}
+
+.stepperSegment[data-current="true"] {
+  transform: scaleY(1.1);
+}
+
+.progressWrap {
+  display: grid;
+  gap: 8px;
+}
+
+.progressMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.progressMeta strong {
+  color: var(--text-primary);
+  font-size: 0.84rem;
+}
+
+.progressTrack {
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid var(--line-soft);
+  background: color-mix(in srgb, var(--bg-surface-subtle) 86%, #ffffff 14%);
+}
+
+.progressFill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--brand) 0%, var(--brand-strong) 100%);
+  transition: width 280ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .sectionTitle {
@@ -164,6 +265,42 @@
   border-radius: 12px;
   padding: 10px 12px;
   font-size: 0.9rem;
+}
+
+.toastViewport {
+  position: sticky;
+  top: 8px;
+  z-index: 20;
+  display: grid;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.toast {
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 0.88rem;
+  border: 1px solid var(--line-soft);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-soft);
+  animation: toast-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.toast[data-kind="success"] {
+  border-color: color-mix(in srgb, var(--brand) 45%, #ffffff 55%);
+  background: color-mix(in srgb, var(--bg-surface) 84%, #dff8ee 16%);
+}
+
+.toast[data-kind="error"] {
+  border-color: color-mix(in srgb, var(--alert) 38%, #ffffff 62%);
+  background: color-mix(in srgb, var(--bg-surface) 88%, #ffe4e1 12%);
+  color: var(--alert);
+}
+
+.toast[data-kind="info"] {
+  border-color: color-mix(in srgb, var(--brand-strong) 35%, #ffffff 65%);
+  background: color-mix(in srgb, var(--bg-surface) 90%, #dbeafe 10%);
 }
 
 .statusOk {
@@ -324,6 +461,63 @@
 .modalBody {
   display: grid;
   gap: 12px;
+}
+
+@keyframes step-panel-in-forward {
+  from {
+    opacity: 0;
+    transform: translateX(18px) scale(0.995);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes step-panel-in-backward {
+  from {
+    opacity: 0;
+    transform: translateX(-18px) scale(0.995);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes guide-active-pulse {
+  from {
+    transform: translateY(1px);
+    filter: saturate(0.9);
+  }
+  to {
+    transform: translateY(0);
+    filter: saturate(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stepPanel,
+  .stepForward,
+  .stepBackward,
+  .progressFill,
+  .stepperSegment,
+  .toast,
+  .guideItem[data-active="true"] {
+    animation: none;
+    transition: none;
+  }
 }
 
 @media (max-width: 768px) {
