@@ -314,37 +314,96 @@
   right: 22px;
   z-index: 90;
   display: grid;
-  gap: 8px;
+  gap: 12px;
+  justify-items: end;
   width: min(420px, calc(100vw - 24px));
   pointer-events: none;
 }
 
 .toast {
-  border-radius: 12px;
-  padding: 10px 12px;
-  font-size: 0.88rem;
-  border: 1px solid var(--line-soft);
-  background: var(--bg-surface);
+  --toast-accent: color-mix(in srgb, var(--brand-strong) 46%, #0f172a 54%);
+  --toast-soft: color-mix(in srgb, var(--brand-strong) 12%, #f7fafc 88%);
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  border-radius: 16px;
+  padding: 12px 14px 13px 52px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: 0.005em;
+  border: 1px solid color-mix(in srgb, var(--toast-accent) 30%, var(--line-soft) 70%);
+  background:
+    radial-gradient(circle at 9% 14%, color-mix(in srgb, var(--toast-accent) 14%, transparent 86%) 0%, transparent 46%),
+    linear-gradient(180deg, color-mix(in srgb, var(--toast-soft) 84%, #ffffff 16%) 0%, color-mix(in srgb, var(--toast-soft) 96%, #0f172a 4%) 100%);
   color: var(--text-primary);
-  box-shadow: var(--shadow-soft);
-  animation: toast-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow:
+    0 16px 30px color-mix(in srgb, #0f172a 18%, transparent 82%),
+    0 4px 10px color-mix(in srgb, #0f172a 10%, transparent 90%),
+    inset 0 1px 0 color-mix(in srgb, #ffffff 70%, transparent 30%);
+  backdrop-filter: blur(6px);
+  animation: toast-in 260ms cubic-bezier(0.22, 1, 0.36, 1);
   pointer-events: auto;
 }
 
+.toast::before {
+  content: "i";
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.84rem;
+  font-weight: 800;
+  line-height: 1;
+  color: #ffffff;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--toast-accent) 72%, #ffffff 28%) 0%, var(--toast-accent) 100%);
+  box-shadow: 0 8px 14px color-mix(in srgb, var(--toast-accent) 28%, transparent 72%);
+}
+
+.toast::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--toast-accent) 86%, #ffffff 14%) 0%, color-mix(in srgb, var(--toast-accent) 50%, #ffffff 50%) 100%);
+  transform-origin: left center;
+  animation: toast-life 3.8s linear forwards;
+}
+
 .toast[data-kind="success"] {
-  border-color: color-mix(in srgb, var(--brand) 45%, #ffffff 55%);
-  background: color-mix(in srgb, var(--bg-surface) 84%, #dff8ee 16%);
+  --toast-accent: #0f9f6e;
+  --toast-soft: #e7f8ef;
+}
+
+.toast[data-kind="success"]::before {
+  content: "\2713";
 }
 
 .toast[data-kind="error"] {
-  border-color: color-mix(in srgb, var(--alert) 38%, #ffffff 62%);
-  background: color-mix(in srgb, var(--bg-surface) 88%, #ffe4e1 12%);
+  --toast-accent: #cf433a;
+  --toast-soft: #fff0ee;
   color: var(--alert);
 }
 
+.toast[data-kind="error"]::before {
+  content: "!";
+}
+
 .toast[data-kind="info"] {
-  border-color: color-mix(in srgb, var(--brand-strong) 35%, #ffffff 65%);
-  background: color-mix(in srgb, var(--bg-surface) 90%, #dbeafe 10%);
+  --toast-accent: #1d4ed8;
+  --toast-soft: #eaf2ff;
+}
+
+.toast:hover {
+  transform: translateY(-1px);
 }
 
 .statusOk {
@@ -571,11 +630,20 @@
 @keyframes toast-in {
   from {
     opacity: 0;
-    transform: translateY(-6px) scale(0.985);
+    transform: translateY(-10px) translateX(8px) scale(0.985);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translateY(0) translateX(0) scale(1);
+  }
+}
+
+@keyframes toast-life {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
   }
 }
 
@@ -597,6 +665,7 @@
   .progressFill,
   .stepperSegment,
   .toast,
+  .toast::after,
   .guideItem[data-active="true"] {
     animation: none;
     transition: none;
@@ -613,6 +682,7 @@
     right: 10px;
     bottom: 10px;
     width: calc(100vw - 20px);
+    justify-items: stretch;
   }
 
   .table {
