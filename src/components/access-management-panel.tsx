@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   accessControlService,
   type ManagedUser,
@@ -16,6 +16,12 @@ type Notice = {
   tone: "success" | "error";
   message: string;
 } | null;
+
+type ToastMessage = {
+  id: string;
+  kind: "success" | "error" | "info";
+  text: string;
+};
 
 type UserFormState = {
   name: string;
@@ -90,6 +96,17 @@ export function AccessManagementPanel({ section }: AccessManagementPanelProps) {
   const [search, setSearch] = useState("");
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  const lastNoticeToastRef = useRef<string | null>(null);
+
+  const pushToast = (kind: ToastMessage["kind"], text: string) => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setToasts((current) => [...current, { id, kind, text }].slice(-4));
+    setTimeout(() => {
+      setToasts((current) => current.filter((toast) => toast.id !== id));
+    }, 3800);
+  };
 
   const selectedUser = useMemo(
     () => users.find((user) => user.id === selectedUserId) ?? null,
@@ -181,17 +198,36 @@ export function AccessManagementPanel({ section }: AccessManagementPanelProps) {
     }
   }
 
+  /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadCoreData();
   }, []);
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadUserAssignments(selectedUserId);
   }, [selectedUserId]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadRolePermissionAssignments(selectedRoleId);
   }, [selectedRoleId]);
+
+  useEffect(() => {
+    if (!notice) {
+      return;
+    }
+
+    const signature = `${notice.tone}:${notice.message}`;
+    if (lastNoticeToastRef.current === signature) {
+      return;
+    }
+
+    lastNoticeToastRef.current = signature;
+    pushToast(notice.tone === "success" ? "success" : "error", notice.message);
+  }, [notice]);
 
   function resetUserForm() {
     setEditingUserId(null);
@@ -930,6 +966,14 @@ export function AccessManagementPanel({ section }: AccessManagementPanelProps) {
 
   return (
     <section className={styles.managementStack}>
+      <div className={styles.toastViewport} aria-live="polite" aria-atomic="true">
+        {toasts.map((toast) => (
+          <div key={toast.id} className={styles.toast} data-kind={toast.kind}>
+            {toast.text}
+          </div>
+        ))}
+      </div>
+
       <header className={styles.managementHeader}>
         <div>
           <h2>{sectionCopy[section].title}</h2>
@@ -944,12 +988,6 @@ export function AccessManagementPanel({ section }: AccessManagementPanelProps) {
           {busyAction === "load" ? "Actualizando..." : "Recargar"}
         </button>
       </header>
-
-      {notice ? (
-        <div className={styles.noticeBanner} data-tone={notice.tone}>
-          {notice.message}
-        </div>
-      ) : null}
 
       {section === "users" && renderUsersSection()}
       {section === "roles" && renderRolesSection()}
