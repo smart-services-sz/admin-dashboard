@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { accessControlService, type ManagedUser } from "@/services/access-control.service";
 import { CATEGORIA_LABELS } from "@/services/reclamos.service";
 import { routingService, type RoutingAreaPlan } from "@/services/routing.service";
@@ -117,9 +117,6 @@ export function RoutingPlansPanel() {
   const [form, setForm] = useState<PlanFormState>(EMPTY_FORM);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
-  const lastErrorToastRef = useRef<string | null>(null);
-  const lastOkToastRef = useRef<string | null>(null);
-
   const pushToast = (kind: ToastMessage["kind"], text: string) => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     setToasts((current) => [...current, { id, kind, text }].slice(-4));
@@ -177,20 +174,20 @@ export function RoutingPlansPanel() {
   }, []);
 
   useEffect(() => {
-    if (!error || error === lastErrorToastRef.current) {
+    if (!error) {
       return;
     }
 
-    lastErrorToastRef.current = error;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     pushToast("error", error);
   }, [error]);
 
   useEffect(() => {
-    if (!okMessage || okMessage === lastOkToastRef.current) {
+    if (!okMessage) {
       return;
     }
 
-    lastOkToastRef.current = okMessage;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     pushToast("success", okMessage);
   }, [okMessage]);
 

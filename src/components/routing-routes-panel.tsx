@@ -260,9 +260,6 @@ export function RoutingRoutesPanel() {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const googleMapsKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
 
-  const lastErrorToastRef = useRef<string | null>(null);
-  const lastOkToastRef = useRef<string | null>(null);
-
   const pushToast = (kind: ToastMessage["kind"], text: string) => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     setToasts((current) => [...current, { id, kind, text }].slice(-4));
@@ -464,20 +461,20 @@ export function RoutingRoutesPanel() {
   }, []);
 
   useEffect(() => {
-    if (!error || error === lastErrorToastRef.current) {
+    if (!error) {
       return;
     }
 
-    lastErrorToastRef.current = error;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     pushToast("error", error);
   }, [error]);
 
   useEffect(() => {
-    if (!okMessage || okMessage === lastOkToastRef.current) {
+    if (!okMessage) {
       return;
     }
 
-    lastOkToastRef.current = okMessage;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     pushToast("success", okMessage);
   }, [okMessage]);
 
