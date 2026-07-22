@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { accessControlService, type ManagedUser } from "@/services/access-control.service";
 import { CATEGORIA_LABELS } from "@/services/reclamos.service";
 import {
@@ -257,6 +258,7 @@ export function RoutingRoutesPanel() {
   const [auditTrail, setAuditTrail] = useState<AuditEntry[]>([]);
   const [runHistory, setRunHistory] = useState<RunQualitySnapshot[]>([]);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [isClient, setIsClient] = useState(false);
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const googleMapsKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
 
@@ -454,6 +456,11 @@ export function RoutingRoutesPanel() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setIsClient(true);
+  }, []);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -1028,6 +1035,19 @@ export function RoutingRoutesPanel() {
 
   return (
     <section className={styles.stack}>
+      {isClient
+        ? createPortal(
+            <div className={styles.toastViewport} aria-live="polite" aria-atomic="true">
+              {toasts.map((toast) => (
+                <div key={toast.id} className={styles.toast} data-kind={toast.kind}>
+                  {toast.text}
+                </div>
+              ))}
+            </div>,
+            document.body,
+          )
+        : null}
+
       <article className={styles.card}>
         <div className={styles.head}>
           <div>
@@ -1112,14 +1132,6 @@ export function RoutingRoutesPanel() {
           <div className={styles.progressTrack} role="progressbar" aria-valuemin={1} aria-valuemax={4} aria-valuenow={wizardStep} aria-label="Progreso de generacion de rutas">
             <div className={styles.progressFill} style={{ width: `${progressPercent}%` }} />
           </div>
-        </div>
-
-        <div className={styles.toastViewport} aria-live="polite" aria-atomic="true">
-          {toasts.map((toast) => (
-            <div key={toast.id} className={styles.toast} data-kind={toast.kind}>
-              {toast.text}
-            </div>
-          ))}
         </div>
 
         {wizardStep === 1 && (

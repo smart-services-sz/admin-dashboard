@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   routingService,
   type RoutingPlanListItem,
@@ -117,6 +118,7 @@ export function RoutingGeneratedPanel() {
   const [error, setError] = useState<string | null>(null);
   const [okMessage, setOkMessage] = useState<string | null>(null);
   const [toasts, setToasts] = useState<Array<{ id: string; kind: "success" | "error" | "info"; text: string }>>([]);
+  const [isClient, setIsClient] = useState(false);
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const googleMapsKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
   const pushToast = (kind: "success" | "error" | "info", text: string) => {
@@ -323,6 +325,11 @@ export function RoutingGeneratedPanel() {
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
+    setIsClient(true);
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadPlans();
   }, []);
 
@@ -400,20 +407,25 @@ export function RoutingGeneratedPanel() {
 
   return (
     <section className={styles.stack}>
+      {isClient
+        ? createPortal(
+            <div className={styles.toastViewport} aria-live="polite" aria-atomic="true">
+              {toasts.map((toast) => (
+                <div key={toast.id} className={styles.toast} data-kind={toast.kind}>
+                  {toast.text}
+                </div>
+              ))}
+            </div>,
+            document.body,
+          )
+        : null}
+
       <article className={styles.card}>
         <div className={styles.head}>
           <div>
             <h2>Rutas generadas</h2>
             <span>Submodulo de consulta, confirmacion y limpieza de planes generados.</span>
           </div>
-        </div>
-
-        <div className={styles.toastViewport} aria-live="polite" aria-atomic="true">
-          {toasts.map((toast) => (
-            <div key={toast.id} className={styles.toast} data-kind={toast.kind}>
-              {toast.text}
-            </div>
-          ))}
         </div>
 
         <div className={styles.toolbarRow}>

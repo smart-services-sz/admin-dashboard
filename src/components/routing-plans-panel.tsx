@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { accessControlService, type ManagedUser } from "@/services/access-control.service";
 import { CATEGORIA_LABELS } from "@/services/reclamos.service";
 import { routingService, type RoutingAreaPlan } from "@/services/routing.service";
@@ -116,6 +117,7 @@ export function RoutingPlansPanel() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [form, setForm] = useState<PlanFormState>(EMPTY_FORM);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [isClient, setIsClient] = useState(false);
 
   const pushToast = (kind: ToastMessage["kind"], text: string) => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -167,6 +169,11 @@ export function RoutingPlansPanel() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setIsClient(true);
+  }, []);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -349,6 +356,19 @@ export function RoutingPlansPanel() {
 
   return (
     <section className={styles.stack}>
+      {isClient
+        ? createPortal(
+            <div className={styles.toastViewport} aria-live="polite" aria-atomic="true">
+              {toasts.map((toast) => (
+                <div key={toast.id} className={styles.toast} data-kind={toast.kind}>
+                  {toast.text}
+                </div>
+              ))}
+            </div>,
+            document.body,
+          )
+        : null}
+
       <article className={styles.card}>
         <div className={styles.head}>
           <div>
@@ -388,14 +408,6 @@ export function RoutingPlansPanel() {
               ))}
             </select>
           </label>
-        </div>
-
-        <div className={styles.toastViewport} aria-live="polite" aria-atomic="true">
-          {toasts.map((toast) => (
-            <div key={toast.id} className={styles.toast} data-kind={toast.kind}>
-              {toast.text}
-            </div>
-          ))}
         </div>
 
         <div className={styles.tableWrap}>
