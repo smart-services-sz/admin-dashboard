@@ -12,7 +12,8 @@ const mockGetActiveUsersByRole = vi.fn();
 
 vi.mock("@/services/access-control.service", () => ({
   accessControlService: {
-    getActiveUsersByRole: (...args: unknown[]) => mockGetActiveUsersByRole(...args),
+    getActiveUsersByRole: (...args: unknown[]) =>
+      mockGetActiveUsersByRole(...args),
   },
 }));
 
@@ -141,16 +142,24 @@ describe("RoutingRoutesPanel", () => {
   });
 
   const goToStepTwo = async () => {
-    fireEvent.change(screen.getByLabelText("Plan"), { target: { value: "plan-1" } });
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Continuar al paso 2" })).toBeEnabled();
+    fireEvent.change(screen.getByLabelText("Plan"), {
+      target: { value: "plan-1" },
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Continuar al paso 2" }));
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Continuar al paso 2" }),
+      ).toBeEnabled();
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Continuar al paso 2" }),
+    );
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Cargar reclamos" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Cargar reclamos" }),
+      ).toBeInTheDocument();
     });
   };
 
@@ -158,7 +167,9 @@ describe("RoutingRoutesPanel", () => {
     render(<RoutingRoutesPanel />);
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Continuar al paso 2" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Continuar al paso 2" }),
+      ).toBeInTheDocument();
     });
 
     await goToStepTwo();
@@ -166,14 +177,30 @@ describe("RoutingRoutesPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cargar reclamos" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Reclamos cargados. Ya puedes generar la ruta optimizada.")).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          "Reclamos cargados. Ya puedes generar la ruta optimizada.",
+        ),
+      ).toBeInTheDocument();
     });
 
-    expect(screen.queryByText("El plan seleccionado no tiene categorias configuradas para ruteo.")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        "El plan seleccionado no tiene categorias configuradas para ruteo.",
+      ),
+    ).not.toBeInTheDocument();
 
     expect(mockSimulate).toHaveBeenCalled();
     const simulatePayload = mockSimulate.mock.calls[0][0];
-    expect(simulatePayload.overrideRules.categoryRules[0].categoria).toBe("agua_y_cloacas");
+    expect(simulatePayload.categories).toEqual(["agua_y_cloacas"]);
+    expect(simulatePayload.claimStatuses).toEqual(["pendiente"]);
+    expect(simulatePayload.priorities).toBeUndefined();
+    expect(simulatePayload.overrideRules.categoryRules[0].categoria).toBe(
+      "agua_y_cloacas",
+    );
+    expect(simulatePayload.overrideRules.categoryRules[0].pesoPrioridad).toBe(
+      1,
+    );
   });
 
   it("muestra sugerencias por causa cuando hay no asignados", async () => {
@@ -214,7 +241,9 @@ describe("RoutingRoutesPanel", () => {
     render(<RoutingRoutesPanel />);
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Continuar al paso 2" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Continuar al paso 2" }),
+      ).toBeInTheDocument();
     });
 
     await goToStepTwo();
@@ -222,62 +251,74 @@ describe("RoutingRoutesPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cargar reclamos" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Volver al paso 2" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Volver al paso 2" }),
+      ).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Volver al paso 2" }));
 
     await waitFor(() => {
-      expect(screen.getByText("No asignados por causa (Paso 2)")).toBeInTheDocument();
+      expect(
+        screen.getByText("No asignados por causa (Paso 2)"),
+      ).toBeInTheDocument();
     });
 
     expect(screen.getByText("cupo diario agotado")).toBeInTheDocument();
-    expect(screen.getByText("Aumenta cupos por categoria o por usuario para esta corrida.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Aumenta cupos por categoria o por usuario para esta corrida.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("aplica fallback sin Google cuando falla la optimizacion de Google", async () => {
-    mockGenerate.mockImplementation((payload: { useGoogleOptimization: boolean }) => {
-      if (payload.useGoogleOptimization) {
-        return Promise.reject(new Error("Google optimization failed"));
-      }
+    mockGenerate.mockImplementation(
+      (payload: { useGoogleOptimization: boolean }) => {
+        if (payload.useGoogleOptimization) {
+          return Promise.reject(new Error("Google optimization failed"));
+        }
 
-      return Promise.resolve({
-        status: "ok",
-        generatedAt: new Date().toISOString(),
-        planningDate: new Date().toISOString(),
-        summary: {
-          totalFetched: 20,
-          totalCandidateAfterRules: 12,
-          totalAssigned: 8,
-          totalUnassigned: 4,
-          unassignedByReason: {},
-          categoryQuotaConsumption: { agua_y_cloacas: 8 },
-          googleOptimization: {
-            enabled: false,
-            optimizedRoutes: 0,
-            failedRoutes: 0,
+        return Promise.resolve({
+          status: "ok",
+          generatedAt: new Date().toISOString(),
+          planningDate: new Date().toISOString(),
+          summary: {
+            totalFetched: 20,
+            totalCandidateAfterRules: 12,
+            totalAssigned: 8,
+            totalUnassigned: 4,
+            unassignedByReason: {},
+            categoryQuotaConsumption: { agua_y_cloacas: 8 },
+            googleOptimization: {
+              enabled: false,
+              optimizedRoutes: 0,
+              failedRoutes: 0,
+            },
           },
-        },
-        routes: [
-          {
-            crewId: "agent-1",
-            nombre: "Agente Uno",
-            assignedClaims: 8,
-            maxReclamosDiarios: 10,
-            totalDistanceKm: 6.4,
-            totalDurationMin: 31,
-            stops: [],
-          },
-        ],
-        unassigned: [],
-        savedPlanId: "generated-plan-fallback",
-      });
-    });
+          routes: [
+            {
+              crewId: "agent-1",
+              nombre: "Agente Uno",
+              assignedClaims: 8,
+              maxReclamosDiarios: 10,
+              totalDistanceKm: 6.4,
+              totalDurationMin: 31,
+              stops: [],
+            },
+          ],
+          unassigned: [],
+          savedPlanId: "generated-plan-fallback",
+        });
+      },
+    );
 
     render(<RoutingRoutesPanel />);
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Continuar al paso 2" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Continuar al paso 2" }),
+      ).toBeInTheDocument();
     });
 
     await goToStepTwo();
@@ -285,17 +326,35 @@ describe("RoutingRoutesPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cargar reclamos" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Generar ruta optimizada" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Generar ruta optimizada" }),
+      ).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Generar ruta optimizada" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Generar ruta optimizada" }),
+    );
 
     await waitFor(() => {
-      expect(screen.getByText("Ruta generada con fallback sin Google por un problema transitorio en optimizacion.")).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          "Ruta generada con fallback sin Google por un problema transitorio en optimizacion.",
+        ),
+      ).toBeInTheDocument();
     });
 
     const calls = mockGenerate.mock.calls.map((args) => args[0]);
-    expect(calls.some((payload: { useGoogleOptimization: boolean }) => payload.useGoogleOptimization)).toBe(true);
-    expect(calls.some((payload: { useGoogleOptimization: boolean }) => !payload.useGoogleOptimization)).toBe(true);
+    expect(
+      calls.some(
+        (payload: { useGoogleOptimization: boolean }) =>
+          payload.useGoogleOptimization,
+      ),
+    ).toBe(true);
+    expect(
+      calls.some(
+        (payload: { useGoogleOptimization: boolean }) =>
+          !payload.useGoogleOptimization,
+      ),
+    ).toBe(true);
   });
 });

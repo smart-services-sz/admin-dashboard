@@ -22,6 +22,8 @@ export interface ManagedUser {
   cargo?: string | null;
   legajo?: string | null;
   area?: string | null;
+  municipalityId?: string | null;
+  areaId?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -46,6 +48,8 @@ export interface UserFormPayload {
   cargo: string;
   legajo: string;
   area: string;
+  municipalityId?: string;
+  areaId?: string;
   whatsappNumber?: string;
 }
 
@@ -80,7 +84,9 @@ function withSearch(path: string, search?: string) {
 
 class AccessControlService {
   getUsers(search?: string) {
-    return apiFetch<PaginatedResponse<ManagedUser>>(withSearch(endpoints.users, search));
+    return apiFetch<PaginatedResponse<ManagedUser>>(
+      withSearch(endpoints.users, search),
+    );
   }
 
   getUsersByRole(roleName: string, options?: { isActive?: boolean }) {
@@ -89,7 +95,10 @@ class AccessControlService {
         page: "1",
         limit: "100",
         role: roleName,
-        isActive: typeof options?.isActive === "boolean" ? String(options.isActive) : undefined,
+        isActive:
+          typeof options?.isActive === "boolean"
+            ? String(options.isActive)
+            : undefined,
       }),
     );
   }
@@ -125,7 +134,9 @@ class AccessControlService {
   }
 
   getRoles(search?: string) {
-    return apiFetch<PaginatedResponse<RoleRecord>>(withSearch(endpoints.roles, search));
+    return apiFetch<PaginatedResponse<RoleRecord>>(
+      withSearch(endpoints.roles, search),
+    );
   }
 
   createRole(payload: NamePayload) {
@@ -160,18 +171,25 @@ class AccessControlService {
   }
 
   getRolePermissions(roleId: string) {
-    return apiFetch<PermissionRecord[]>(`${endpoints.roles}/${roleId}/permissions`);
+    return apiFetch<PermissionRecord[]>(
+      `${endpoints.roles}/${roleId}/permissions`,
+    );
   }
 
   setRolePermissions(roleId: string, permissionIds: string[]) {
-    return apiFetch<PermissionRecord[]>(`${endpoints.roles}/${roleId}/permissions`, {
-      method: "PUT",
-      body: JSON.stringify({ permissionIds }),
-    });
+    return apiFetch<PermissionRecord[]>(
+      `${endpoints.roles}/${roleId}/permissions`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ permissionIds }),
+      },
+    );
   }
 
   getPermissions(search?: string) {
-    return apiFetch<PaginatedResponse<PermissionRecord>>(withSearch(endpoints.permissions, search));
+    return apiFetch<PaginatedResponse<PermissionRecord>>(
+      withSearch(endpoints.permissions, search),
+    );
   }
 
   createPermission(payload: NamePayload) {
@@ -182,27 +200,38 @@ class AccessControlService {
   }
 
   updatePermission(permissionId: string, payload: NamePayload) {
-    return apiFetch<PermissionRecord>(`${endpoints.permissions}/${permissionId}`, {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-    });
+    return apiFetch<PermissionRecord>(
+      `${endpoints.permissions}/${permissionId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      },
+    );
   }
 
   deletePermission(permissionId: string) {
-    return apiFetch<{ success: boolean }>(`${endpoints.permissions}/${permissionId}`, {
-      method: "DELETE",
-    });
+    return apiFetch<{ success: boolean }>(
+      `${endpoints.permissions}/${permissionId}`,
+      {
+        method: "DELETE",
+      },
+    );
   }
 
   getUserPermissions(userId: string) {
-    return apiFetch<PermissionRecord[]>(`${endpoints.permissions}/user/${userId}`);
+    return apiFetch<PermissionRecord[]>(
+      `${endpoints.permissions}/user/${userId}`,
+    );
   }
 
   setUserPermissions(userId: string, permissionIds: string[]) {
-    return apiFetch<PermissionRecord[]>(`${endpoints.permissions}/user/${userId}`, {
-      method: "PUT",
-      body: JSON.stringify({ permissionIds }),
-    });
+    return apiFetch<PermissionRecord[]>(
+      `${endpoints.permissions}/user/${userId}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ permissionIds }),
+      },
+    );
   }
 }
 

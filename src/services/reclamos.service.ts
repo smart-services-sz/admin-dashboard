@@ -3,11 +3,7 @@ import { apiFetch } from "@/lib/api-client";
 const BASE = "/api/reclamos";
 
 export type ReclamoEstado =
-  | "pendiente"
-  | "en_proceso"
-  | "resuelto"
-  | "rechazado"
-  | "cerrado";
+  "pendiente" | "en_proceso" | "resuelto" | "rechazado" | "cerrado";
 
 export type ReclamoCategoria =
   | "agua_y_cloacas"
@@ -24,13 +20,7 @@ export type ReclamoCategoria =
 export type ReclamoPrioridad = "alta" | "media" | "baja";
 
 export type Canal =
-  | "whatsapp"
-  | "web"
-  | "email"
-  | "instagram"
-  | "facebook"
-  | "manual"
-  | "other";
+  "whatsapp" | "web" | "email" | "instagram" | "facebook" | "manual" | "other";
 
 export interface Reclamo {
   id: string;
@@ -65,6 +55,20 @@ export interface ReclamoListResponse {
   };
 }
 
+export interface ReclamoHistoryEntry {
+  id: string;
+  reclamoId: string;
+  accion: string;
+  origen: string;
+  actorId?: string | null;
+  estadoAnterior?: ReclamoEstado | null;
+  estadoNuevo?: ReclamoEstado | null;
+  motivo?: string | null;
+  referenciaId?: string | null;
+  metadata?: Record<string, unknown> | null;
+  creadoEn: string;
+}
+
 export interface FindReclamosParams {
   page?: number;
   limit?: number;
@@ -92,13 +96,49 @@ class ReclamosService {
     if (params.categoria) query.set("categoria", params.categoria);
     if (params.prioridad) query.set("prioridad", params.prioridad);
     if (params.contactKey) query.set("contactKey", params.contactKey);
-    if (params.codigoSeguimiento) query.set("codigoSeguimiento", params.codigoSeguimiento);
+    if (params.codigoSeguimiento)
+      query.set("codigoSeguimiento", params.codigoSeguimiento);
     const qs = query.toString();
     return apiFetch<ReclamoListResponse>(`${BASE}${qs ? `?${qs}` : ""}`);
   }
 
   getReclamoById(id: string): Promise<Reclamo> {
     return apiFetch<Reclamo>(`${BASE}/${id}`);
+  }
+
+  getHistory(
+    id: string,
+  ): Promise<{ status: string; data: ReclamoHistoryEntry[] }> {
+    return apiFetch<{ status: string; data: ReclamoHistoryEntry[] }>(
+      `${BASE}/${id}/history`,
+    );
+  }
+
+  reviewResolution(
+    id: string,
+    payload: { resultado: "aprobada" | "rechazada"; comentario?: string },
+  ) {
+    return apiFetch<{ status: string; data: unknown }>(
+      `${BASE}/${id}/resolution-review`,
+      { method: "POST", body: JSON.stringify(payload) },
+    );
+  }
+
+  requestNewVisit(
+    id: string,
+    payload: { motivo: string; programadaEn?: string },
+  ) {
+    return apiFetch<{ status: string; data: unknown }>(
+      `${BASE}/${id}/new-visit`,
+      { method: "POST", body: JSON.stringify(payload) },
+    );
+  }
+
+  closeReclamo(id: string, motivo: string) {
+    return apiFetch<{ status: string; data: unknown }>(`${BASE}/${id}/close`, {
+      method: "POST",
+      body: JSON.stringify({ motivo }),
+    });
   }
 
   updateReclamo(id: string, payload: UpdateReclamoPayload): Promise<Reclamo> {

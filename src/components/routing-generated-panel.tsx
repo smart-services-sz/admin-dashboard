@@ -24,20 +24,25 @@ function loadGoogleMapsScript(apiKey: string): Promise<void> {
         Marker: new (...args: unknown[]) => unknown;
         Polyline: new (...args: unknown[]) => unknown;
         DirectionsService: new () => {
-          route: (
-            request: {
-              origin: { lat: number; lng: number };
-              destination: { lat: number; lng: number };
-              waypoints?: Array<{ location: { lat: number; lng: number }; stopover: boolean }>;
-              optimizeWaypoints?: boolean;
-              travelMode: string;
-            },
-          ) => Promise<unknown>;
+          route: (request: {
+            origin: { lat: number; lng: number };
+            destination: { lat: number; lng: number };
+            waypoints?: Array<{
+              location: { lat: number; lng: number };
+              stopover: boolean;
+            }>;
+            optimizeWaypoints?: boolean;
+            travelMode: string;
+          }) => Promise<unknown>;
         };
         DirectionsRenderer: new (options: {
           map: unknown;
           suppressMarkers?: boolean;
-          polylineOptions?: { strokeColor?: string; strokeOpacity?: number; strokeWeight?: number };
+          polylineOptions?: {
+            strokeColor?: string;
+            strokeOpacity?: number;
+            strokeWeight?: number;
+          };
         }) => { setDirections: (result: unknown) => void };
         LatLngBounds: new (...args: unknown[]) => {
           extend: (point: { lat: number; lng: number }) => void;
@@ -55,10 +60,16 @@ function loadGoogleMapsScript(apiKey: string): Promise<void> {
   }
 
   googleMapsScriptPromise = new Promise<void>((resolve, reject) => {
-    const existing = document.getElementById("google-maps-script") as HTMLScriptElement | null;
+    const existing = document.getElementById(
+      "google-maps-script",
+    ) as HTMLScriptElement | null;
     if (existing) {
       existing.addEventListener("load", () => resolve(), { once: true });
-      existing.addEventListener("error", () => reject(new Error("No se pudo cargar Google Maps")), { once: true });
+      existing.addEventListener(
+        "error",
+        () => reject(new Error("No se pudo cargar Google Maps")),
+        { once: true },
+      );
       return;
     }
 
@@ -75,38 +86,57 @@ function loadGoogleMapsScript(apiKey: string): Promise<void> {
   return googleMapsScriptPromise;
 }
 
-function mapPlanToSimulation(plan: RoutingPlanResponse["data"]): RoutingSimulationResult {
+function mapPlanToSimulation(
+  plan: RoutingPlanResponse["data"],
+): RoutingSimulationResult {
   return {
     status: "ok",
     generatedAt: plan.planningDate,
     planningDate: plan.planningDate,
     summary: {
-      totalFetched: Number((plan.summary.totalFetched as number | undefined) ?? 0),
-      totalCandidateAfterRules: Number((plan.summary.totalCandidateAfterRules as number | undefined) ?? 0),
-      totalAssigned: plan.routes.reduce((acc, route) => acc + route.assignedClaims, 0),
+      totalFetched: Number(
+        (plan.summary.totalFetched as number | undefined) ?? 0,
+      ),
+      totalCandidateAfterRules: Number(
+        (plan.summary.totalCandidateAfterRules as number | undefined) ?? 0,
+      ),
+      totalAssigned: plan.routes.reduce(
+        (acc, route) => acc + route.assignedClaims,
+        0,
+      ),
       totalUnassigned: plan.unassigned.length,
-      unassignedByReason: (plan.summary.unassignedByReason as Record<string, number> | undefined) ?? {},
-      categoryQuotaConsumption: (plan.summary.categoryQuotaConsumption as Record<string, number> | undefined) ?? {},
-      googleOptimization:
-        (plan.summary.googleOptimization as {
-          enabled: boolean;
-          optimizedRoutes: number;
-          failedRoutes: number;
-        } | undefined) ?? {
-          enabled: false,
-          optimizedRoutes: 0,
-          failedRoutes: 0,
-        },
+      unassignedByReason:
+        (plan.summary.unassignedByReason as
+          Record<string, number> | undefined) ?? {},
+      categoryQuotaConsumption:
+        (plan.summary.categoryQuotaConsumption as
+          Record<string, number> | undefined) ?? {},
+      googleOptimization: (plan.summary.googleOptimization as
+        | {
+            enabled: boolean;
+            optimizedRoutes: number;
+            failedRoutes: number;
+          }
+        | undefined) ?? {
+        enabled: false,
+        optimizedRoutes: 0,
+        failedRoutes: 0,
+      },
     },
     routes: plan.routes,
-    unassigned: plan.unassigned.map((item) => ({ reclamoId: item.reclamoId, reason: item.reason })),
+    unassigned: plan.unassigned.map((item) => ({
+      reclamoId: item.reclamoId,
+      reason: item.reason,
+    })),
+    actionHistory: plan.actionHistory,
     savedPlanId: plan.id,
   };
 }
 
 export function RoutingGeneratedPanel() {
   const [plans, setPlans] = useState<RoutingPlanListItem[]>([]);
-  const [selectedPlan, setSelectedPlan] = useState<RoutingSimulationResult | null>(null);
+  const [selectedPlan, setSelectedPlan] =
+    useState<RoutingSimulationResult | null>(null);
   const [selectedCrewId, setSelectedCrewId] = useState<string>("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -117,7 +147,9 @@ export function RoutingGeneratedPanel() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [okMessage, setOkMessage] = useState<string | null>(null);
-  const [toasts, setToasts] = useState<Array<{ id: string; kind: "success" | "error" | "info"; text: string }>>([]);
+  const [toasts, setToasts] = useState<
+    Array<{ id: string; kind: "success" | "error" | "info"; text: string }>
+  >([]);
   const [isClient, setIsClient] = useState(false);
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const googleMapsKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
@@ -132,10 +164,16 @@ export function RoutingGeneratedPanel() {
   const selectedRoute = useMemo(() => {
     if (!selectedPlan?.routes?.length) return null;
     if (!selectedCrewId) return selectedPlan.routes[0];
-    return selectedPlan.routes.find((route) => route.crewId === selectedCrewId) ?? selectedPlan.routes[0];
+    return (
+      selectedPlan.routes.find((route) => route.crewId === selectedCrewId) ??
+      selectedPlan.routes[0]
+    );
   }, [selectedPlan, selectedCrewId]);
 
-  const visibleStops = useMemo(() => selectedRoute?.stops ?? [], [selectedRoute]);
+  const visibleStops = useMemo(
+    () => selectedRoute?.stops ?? [],
+    [selectedRoute],
+  );
 
   const mapStops = useMemo(() => {
     return visibleStops.filter(
@@ -167,14 +205,32 @@ export function RoutingGeneratedPanel() {
             maps?: {
               Map: new (
                 element: HTMLElement,
-                options: { center: { lat: number; lng: number }; zoom: number; mapTypeControl?: boolean; streetViewControl?: boolean },
-              ) => { fitBounds: (bounds: { extend: (point: { lat: number; lng: number }) => void }) => void; setZoom: (zoom: number) => void };
-              Marker: new (options: { map: unknown; position: { lat: number; lng: number }; label?: string; title?: string }) => unknown;
+                options: {
+                  center: { lat: number; lng: number };
+                  zoom: number;
+                  mapTypeControl?: boolean;
+                  streetViewControl?: boolean;
+                },
+              ) => {
+                fitBounds: (bounds: {
+                  extend: (point: { lat: number; lng: number }) => void;
+                }) => void;
+                setZoom: (zoom: number) => void;
+              };
+              Marker: new (options: {
+                map: unknown;
+                position: { lat: number; lng: number };
+                label?: string;
+                title?: string;
+              }) => unknown;
               DirectionsService: new () => {
                 route: (request: {
                   origin: { lat: number; lng: number };
                   destination: { lat: number; lng: number };
-                  waypoints?: Array<{ location: { lat: number; lng: number }; stopover: boolean }>;
+                  waypoints?: Array<{
+                    location: { lat: number; lng: number };
+                    stopover: boolean;
+                  }>;
                   optimizeWaypoints?: boolean;
                   travelMode: string;
                 }) => Promise<unknown>;
@@ -182,9 +238,15 @@ export function RoutingGeneratedPanel() {
               DirectionsRenderer: new (options: {
                 map: unknown;
                 suppressMarkers?: boolean;
-                polylineOptions?: { strokeColor?: string; strokeOpacity?: number; strokeWeight?: number };
+                polylineOptions?: {
+                  strokeColor?: string;
+                  strokeOpacity?: number;
+                  strokeWeight?: number;
+                };
               }) => { setDirections: (result: unknown) => void };
-              LatLngBounds: new () => { extend: (point: { lat: number; lng: number }) => void };
+              LatLngBounds: new () => {
+                extend: (point: { lat: number; lng: number }) => void;
+              };
               TravelMode: { DRIVING: string };
             };
           };
@@ -242,7 +304,9 @@ export function RoutingGeneratedPanel() {
         const directionsResult = await directionsService.route({
           origin: path[0],
           destination: path[path.length - 1],
-          waypoints: path.slice(1, -1).map((point) => ({ location: point, stopover: true })),
+          waypoints: path
+            .slice(1, -1)
+            .map((point) => ({ location: point, stopover: true })),
           optimizeWaypoints: false,
           travelMode: maps.TravelMode.DRIVING,
         });
@@ -297,8 +361,12 @@ export function RoutingGeneratedPanel() {
         return true;
       }
 
-      const routeNames = plan.routes.map((route) => route.nombre.toLowerCase()).join(" ");
-      const routeClaims = plan.routes.map((route) => String(route.assignedClaims)).join(" ");
+      const routeNames = plan.routes
+        .map((route) => route.nombre.toLowerCase())
+        .join(" ");
+      const routeClaims = plan.routes
+        .map((route) => String(route.assignedClaims))
+        .join(" ");
 
       return (
         plan.id.toLowerCase().includes(normalizedSearch) ||
@@ -317,7 +385,11 @@ export function RoutingGeneratedPanel() {
       const response = await routingService.getPlans();
       setPlans(response.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudieron cargar las rutas generadas.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No se pudieron cargar las rutas generadas.",
+      );
     } finally {
       setLoading(false);
     }
@@ -363,7 +435,11 @@ export function RoutingGeneratedPanel() {
       setSelectedCrewId(mapped.routes[0]?.crewId ?? "");
       setOkMessage(`Plan cargado: ${response.data.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo abrir el plan generado.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No se pudo abrir el plan generado.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -379,7 +455,9 @@ export function RoutingGeneratedPanel() {
       await loadPlans();
       setOkMessage(result.message || "Plan confirmado.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo confirmar el plan.");
+      setError(
+        err instanceof Error ? err.message : "No se pudo confirmar el plan.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -399,7 +477,11 @@ export function RoutingGeneratedPanel() {
       await loadPlans();
       setOkMessage("Plan de rutas eliminado.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo eliminar el plan de rutas.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No se pudo eliminar el plan de rutas.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -409,9 +491,17 @@ export function RoutingGeneratedPanel() {
     <section className={styles.stack}>
       {isClient
         ? createPortal(
-            <div className={styles.toastViewport} aria-live="polite" aria-atomic="true">
+            <div
+              className={styles.toastViewport}
+              aria-live="polite"
+              aria-atomic="true"
+            >
               {toasts.map((toast) => (
-                <div key={toast.id} className={styles.toast} data-kind={toast.kind}>
+                <div
+                  key={toast.id}
+                  className={styles.toast}
+                  data-kind={toast.kind}
+                >
                   {toast.text}
                 </div>
               ))}
@@ -424,7 +514,10 @@ export function RoutingGeneratedPanel() {
         <div className={styles.head}>
           <div>
             <h2>Rutas generadas</h2>
-            <span>Submodulo de consulta, confirmacion y limpieza de planes generados.</span>
+            <span>
+              Submodulo de consulta, confirmacion y limpieza de planes
+              generados.
+            </span>
           </div>
         </div>
 
@@ -459,12 +552,22 @@ export function RoutingGeneratedPanel() {
 
           <label className={styles.field} htmlFor="generated-from-date">
             <span>Desde</span>
-            <input id="generated-from-date" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
+            <input
+              id="generated-from-date"
+              type="date"
+              value={fromDate}
+              onChange={(event) => setFromDate(event.target.value)}
+            />
           </label>
 
           <label className={styles.field} htmlFor="generated-to-date">
             <span>Hasta</span>
-            <input id="generated-to-date" type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
+            <input
+              id="generated-to-date"
+              type="date"
+              value={toDate}
+              onChange={(event) => setToDate(event.target.value)}
+            />
           </label>
 
           <label className={styles.field} htmlFor="generated-min-assigned">
@@ -474,7 +577,9 @@ export function RoutingGeneratedPanel() {
               type="number"
               min={0}
               value={minAssigned}
-              onChange={(event) => setMinAssigned(Number(event.target.value || 0))}
+              onChange={(event) =>
+                setMinAssigned(Number(event.target.value || 0))
+              }
             />
           </label>
         </div>
@@ -498,7 +603,9 @@ export function RoutingGeneratedPanel() {
                 </tr>
               ) : filteredPlans.length === 0 ? (
                 <tr>
-                  <td colSpan={6}>No hay rutas generadas para los filtros actuales.</td>
+                  <td colSpan={6}>
+                    No hay rutas generadas para los filtros actuales.
+                  </td>
                 </tr>
               ) : (
                 filteredPlans.map((plan) => (
@@ -507,16 +614,38 @@ export function RoutingGeneratedPanel() {
                     <td>{plan.status}</td>
                     <td>{plan.totalAssigned}</td>
                     <td>{plan.totalUnassigned}</td>
-                    <td>{plan.routes.map((route) => `${route.nombre} (${route.assignedClaims})`).join(", ") || "-"}</td>
+                    <td>
+                      {plan.routes
+                        .map(
+                          (route) =>
+                            `${route.nombre} (${route.assignedClaims})`,
+                        )
+                        .join(", ") || "-"}
+                    </td>
                     <td>
                       <div className={styles.actionsRow}>
-                        <button className={styles.buttonSecondary} type="button" onClick={() => void handleOpenPlan(plan.id)} disabled={submitting}>
+                        <button
+                          className={styles.buttonSecondary}
+                          type="button"
+                          onClick={() => void handleOpenPlan(plan.id)}
+                          disabled={submitting}
+                        >
                           Ver
                         </button>
-                        <button className={styles.buttonSecondary} type="button" onClick={() => void handleConfirmPlan(plan.id)} disabled={submitting || plan.status === "confirmed"}>
+                        <button
+                          className={styles.buttonSecondary}
+                          type="button"
+                          onClick={() => void handleConfirmPlan(plan.id)}
+                          disabled={submitting || plan.status === "confirmed"}
+                        >
                           Confirmar
                         </button>
-                        <button className={styles.buttonSecondary} type="button" onClick={() => void handleDeletePlan(plan.id)} disabled={submitting}>
+                        <button
+                          className={styles.buttonSecondary}
+                          type="button"
+                          onClick={() => void handleDeletePlan(plan.id)}
+                          disabled={submitting}
+                        >
                           Eliminar
                         </button>
                       </div>
@@ -534,21 +663,43 @@ export function RoutingGeneratedPanel() {
           <div className={styles.head}>
             <div>
               <h3>Detalle del plan</h3>
-              <span>Revision de la ruta seleccionada antes de cualquier accion operativa.</span>
+              <span>
+                Revision de la ruta seleccionada antes de cualquier accion
+                operativa.
+              </span>
             </div>
           </div>
 
           <div className={styles.grid}>
-            <div className={styles.metric}><span>Reclamos leidos</span><strong>{selectedPlan.summary.totalFetched}</strong></div>
-            <div className={styles.metric}><span>Asignados</span><strong>{selectedPlan.summary.totalAssigned}</strong></div>
-            <div className={styles.metric}><span>No asignados</span><strong>{selectedPlan.summary.totalUnassigned}</strong></div>
-            <div className={styles.metric}><span>Rutas generadas</span><strong>{selectedPlan.routes.length}</strong></div>
+            <div className={styles.metric}>
+              <span>Reclamos leidos</span>
+              <strong>{selectedPlan.summary.totalFetched}</strong>
+            </div>
+            <div className={styles.metric}>
+              <span>Asignados</span>
+              <strong>{selectedPlan.summary.totalAssigned}</strong>
+            </div>
+            <div className={styles.metric}>
+              <span>No asignados</span>
+              <strong>{selectedPlan.summary.totalUnassigned}</strong>
+            </div>
+            <div className={styles.metric}>
+              <span>Rutas generadas</span>
+              <strong>{selectedPlan.routes.length}</strong>
+            </div>
           </div>
 
           {selectedPlan.routes.length > 0 && (
             <div className={styles.routePickerWrap}>
-              <label htmlFor="generated-route-picker" className={styles.subtle}>Ruta a revisar</label>
-              <select id="generated-route-picker" className={styles.select} value={selectedRoute?.crewId ?? ""} onChange={(event) => setSelectedCrewId(event.target.value)}>
+              <label htmlFor="generated-route-picker" className={styles.subtle}>
+                Ruta a revisar
+              </label>
+              <select
+                id="generated-route-picker"
+                className={styles.select}
+                value={selectedRoute?.crewId ?? ""}
+                onChange={(event) => setSelectedCrewId(event.target.value)}
+              >
                 {selectedPlan.routes.map((route) => (
                   <option key={route.crewId} value={route.crewId}>
                     {route.nombre} ({route.assignedClaims} reclamos)
@@ -560,23 +711,45 @@ export function RoutingGeneratedPanel() {
 
           {selectedRoute && (
             <div className={styles.grid}>
-              <div className={styles.metric}><span>Usuario operativo</span><strong>{selectedRoute.nombre || selectedRoute.crewId}</strong></div>
-              <div className={styles.metric}><span>Paradas</span><strong>{selectedRoute.assignedClaims}</strong></div>
-              <div className={styles.metric}><span>Distancia total (km)</span><strong>{selectedRoute.totalDistanceKm}</strong></div>
-              <div className={styles.metric}><span>Duracion total (min)</span><strong>{selectedRoute.totalDurationMin}</strong></div>
+              <div className={styles.metric}>
+                <span>Usuario operativo</span>
+                <strong>{selectedRoute.nombre || selectedRoute.crewId}</strong>
+              </div>
+              <div className={styles.metric}>
+                <span>Paradas</span>
+                <strong>{selectedRoute.assignedClaims}</strong>
+              </div>
+              <div className={styles.metric}>
+                <span>Distancia total (km)</span>
+                <strong>{selectedRoute.totalDistanceKm}</strong>
+              </div>
+              <div className={styles.metric}>
+                <span>Duracion total (min)</span>
+                <strong>{selectedRoute.totalDurationMin}</strong>
+              </div>
             </div>
           )}
 
           <div className={styles.formSection}>
             <h4 className={styles.sectionTitle}>Mapa de la ruta</h4>
             {!googleMapsKey ? (
-              <p className={styles.subtle}>Configura NEXT_PUBLIC_GOOGLE_MAPS_API_KEY para visualizar el mapa de Google.</p>
+              <p className={styles.subtle}>
+                Configura NEXT_PUBLIC_GOOGLE_MAPS_API_KEY para visualizar el
+                mapa de Google.
+              </p>
             ) : mapStops.length === 0 ? (
-              <p className={styles.subtle}>No hay coordenadas validas para dibujar la ruta seleccionada.</p>
+              <p className={styles.subtle}>
+                No hay coordenadas validas para dibujar la ruta seleccionada.
+              </p>
             ) : (
               <div
                 ref={mapContainerRef}
-                style={{ width: "100%", height: "360px", borderRadius: "12px", overflow: "hidden" }}
+                style={{
+                  width: "100%",
+                  height: "360px",
+                  borderRadius: "12px",
+                  overflow: "hidden",
+                }}
               />
             )}
           </div>
@@ -596,7 +769,9 @@ export function RoutingGeneratedPanel() {
               <tbody>
                 {visibleStops.length === 0 ? (
                   <tr>
-                    <td colSpan={6}>No hay paradas para la ruta seleccionada.</td>
+                    <td colSpan={6}>
+                      No hay paradas para la ruta seleccionada.
+                    </td>
                   </tr>
                 ) : (
                   visibleStops.map((stop) => (
@@ -612,6 +787,47 @@ export function RoutingGeneratedPanel() {
                 )}
               </tbody>
             </table>
+          </div>
+
+          <div className={styles.formSection}>
+            <h4 className={styles.sectionTitle}>Historial operativo</h4>
+            <div className={styles.tableWrap}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Accion</th>
+                    <th>Estado anterior</th>
+                    <th>Estado nuevo</th>
+                    <th>Referencia</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(selectedPlan.actionHistory ?? []).length === 0 ? (
+                    <tr>
+                      <td colSpan={5}>
+                        Sin acciones registradas para este plan.
+                      </td>
+                    </tr>
+                  ) : (
+                    selectedPlan.actionHistory?.map((entry) => (
+                      <tr key={entry.id}>
+                        <td>{new Date(entry.createdAt).toLocaleString()}</td>
+                        <td>{entry.action}</td>
+                        <td>{entry.previousStatus ?? "-"}</td>
+                        <td>{entry.newStatus ?? "-"}</td>
+                        <td>
+                          {entry.reclamoId ??
+                            entry.routeId ??
+                            entry.planId ??
+                            "-"}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </article>
       )}

@@ -9,6 +9,8 @@ export interface AuthUser {
   cargo?: string;
   legajo?: string;
   area?: string;
+  municipalityId?: string;
+  areaId?: string;
 }
 
 const gatewayUrl = process.env.SMARTSERVICE_GATEWAY_URL ?? "http://localhost:3000";

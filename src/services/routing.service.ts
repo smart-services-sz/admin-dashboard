@@ -1,5 +1,9 @@
 import { apiFetch } from "@/lib/api-client";
-import type { ReclamoCategoria, ReclamoPrioridad } from "@/services/reclamos.service";
+import type {
+  ReclamoCategoria,
+  ReclamoEstado,
+  ReclamoPrioridad,
+} from "@/services/reclamos.service";
 
 const BASE = "/api/routing";
 
@@ -39,6 +43,11 @@ export interface UpsertRoutingRulesPayload {
 export interface SimulateRoutingPayload {
   planningDate?: string;
   maxFetch?: number;
+  claimStatuses?: ReclamoEstado[];
+  priorities?: ReclamoPrioridad[];
+  categories?: ReclamoCategoria[];
+  municipalityId?: string;
+  areaId?: string;
   persistPlan?: boolean;
   useGoogleOptimization?: boolean;
   originLat?: number;
@@ -89,7 +98,25 @@ export interface RoutingSimulationResult {
   };
   routes: RoutingRouteResult[];
   unassigned: Array<{ reclamoId: string; reason: string }>;
+  actionHistory?: RoutingActionHistory[];
   savedPlanId: string | null;
+}
+
+export interface RoutingActionHistory {
+  id: string;
+  action: string;
+  planId?: string | null;
+  routeId?: string | null;
+  stopId?: string | null;
+  interventionId?: string | null;
+  evidenceId?: string | null;
+  reclamoId?: string | null;
+  actorId?: string | null;
+  previousStatus?: string | null;
+  newStatus?: string | null;
+  reason?: string | null;
+  metadata?: Record<string, unknown> | null;
+  createdAt: string;
 }
 
 export interface RoutingRulesResponse {
@@ -132,6 +159,7 @@ export interface RoutingPlanResponse {
       }>;
     }>;
     unassigned: Array<{ id: string; reclamoId: string; reason: string }>;
+    actionHistory: RoutingActionHistory[];
   };
 }
 
@@ -172,27 +200,43 @@ class RoutingService {
   }
 
   getAreaPlans(): Promise<{ status: string; data: RoutingAreaPlan[] }> {
-    return apiFetch<{ status: string; data: RoutingAreaPlan[] }>(`${BASE}/area-plans`);
+    return apiFetch<{ status: string; data: RoutingAreaPlan[] }>(
+      `${BASE}/area-plans`,
+    );
   }
 
   getPlans(): Promise<{ status: string; data: RoutingPlanListItem[] }> {
-    return apiFetch<{ status: string; data: RoutingPlanListItem[] }>(`${BASE}/plans`);
+    return apiFetch<{ status: string; data: RoutingPlanListItem[] }>(
+      `${BASE}/plans`,
+    );
   }
 
-  saveAreaPlan(payload: Omit<RoutingAreaPlan, "createdAt" | "updatedAt" | "id"> & { id?: string }): Promise<{ status: string; data: RoutingAreaPlan }> {
-    return apiFetch<{ status: string; data: RoutingAreaPlan }>(`${BASE}/area-plans`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
+  saveAreaPlan(
+    payload: Omit<RoutingAreaPlan, "createdAt" | "updatedAt" | "id"> & {
+      id?: string;
+    },
+  ): Promise<{ status: string; data: RoutingAreaPlan }> {
+    return apiFetch<{ status: string; data: RoutingAreaPlan }>(
+      `${BASE}/area-plans`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+    );
   }
 
   deleteAreaPlan(id: string): Promise<{ status: string; message: string }> {
-    return apiFetch<{ status: string; message: string }>(`${BASE}/area-plans/${id}`, {
-      method: "DELETE",
-    });
+    return apiFetch<{ status: string; message: string }>(
+      `${BASE}/area-plans/${id}`,
+      {
+        method: "DELETE",
+      },
+    );
   }
 
-  upsertRules(payload: UpsertRoutingRulesPayload): Promise<{ status: string; message: string }> {
+  upsertRules(
+    payload: UpsertRoutingRulesPayload,
+  ): Promise<{ status: string; message: string }> {
     return apiFetch<{ status: string; message: string }>(`${BASE}/rules`, {
       method: "PUT",
       body: JSON.stringify(payload),
@@ -218,15 +262,21 @@ class RoutingService {
   }
 
   confirmPlan(id: string): Promise<{ status: string; message: string }> {
-    return apiFetch<{ status: string; message: string }>(`${BASE}/plans/${id}/confirm`, {
-      method: "POST",
-    });
+    return apiFetch<{ status: string; message: string }>(
+      `${BASE}/plans/${id}/confirm`,
+      {
+        method: "POST",
+      },
+    );
   }
 
   deletePlan(id: string): Promise<{ status: string; message: string }> {
-    return apiFetch<{ status: string; message: string }>(`${BASE}/plans/${id}`, {
-      method: "DELETE",
-    });
+    return apiFetch<{ status: string; message: string }>(
+      `${BASE}/plans/${id}`,
+      {
+        method: "DELETE",
+      },
+    );
   }
 }
 

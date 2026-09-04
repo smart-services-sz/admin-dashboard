@@ -46,8 +46,16 @@
   --topbar-bg: rgba(10, 19, 36, 0.84);
   --card-fallback-bg: #0f1b32;
   background:
-    radial-gradient(circle at 20% -8%, rgba(19, 76, 112, 0.3) 0, transparent 34%),
-    radial-gradient(circle at 88% 18%, rgba(24, 97, 74, 0.34) 0, transparent 36%),
+    radial-gradient(
+      circle at 20% -8%,
+      rgba(19, 76, 112, 0.3) 0,
+      transparent 34%
+    ),
+    radial-gradient(
+      circle at 88% 18%,
+      rgba(24, 97, 74, 0.34) 0,
+      transparent 36%
+    ),
     var(--bg-base);
 }
 
@@ -115,7 +123,10 @@
 
 .brandBlock > div {
   min-width: 0;
-  transition: opacity 180ms ease, width 180ms ease, transform 180ms ease;
+  transition:
+    opacity 180ms ease,
+    width 180ms ease,
+    transform 180ms ease;
 }
 
 .brandDot {
@@ -149,7 +160,10 @@
   justify-content: center;
   align-items: center;
   gap: 5px;
-  transition: background 180ms ease, border-color 180ms ease, transform 180ms ease;
+  transition:
+    background 180ms ease,
+    border-color 180ms ease,
+    transform 180ms ease;
 }
 
 .sidebarToggle span {
@@ -157,7 +171,9 @@
   height: 2px;
   border-radius: 999px;
   background: currentColor;
-  transition: transform 180ms ease, opacity 180ms ease;
+  transition:
+    transform 180ms ease,
+    opacity 180ms ease;
   transform-origin: center;
 }
 
@@ -317,7 +333,11 @@
   padding: 10px 12px;
   color: #fff;
   font-weight: 600;
-  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-strong) 100%);
+  background: linear-gradient(
+    135deg,
+    var(--brand) 0%,
+    var(--brand-strong) 100%
+  );
   cursor: pointer;
 }
 
@@ -542,7 +562,11 @@
   font-size: 0.95rem;
   font-weight: 700;
   color: #fff;
-  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-strong) 100%);
+  background: linear-gradient(
+    135deg,
+    var(--brand) 0%,
+    var(--brand-strong) 100%
+  );
   cursor: pointer;
 }
 
@@ -885,6 +909,16 @@
 .reclamoObservaciones {
   font-size: 0.84rem;
   color: var(--text-muted);
+}
+
+.operationalActionPanel {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--card-fallback-bg) 88%, var(--brand) 12%);
 }
 
 .form textarea {

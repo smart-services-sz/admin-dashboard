@@ -30,6 +30,8 @@ type ToastMessage = {
   text: string;
 };
 
+type OperationalAction = "review" | "new_visit" | "close";
+
 function emptyEditForm(reclamo: Reclamo): EditForm {
   return {
     estado: reclamo.estado,
@@ -52,7 +54,9 @@ export function ReclamosPanel() {
   const [okMessage, setOkMessage] = useState<string | null>(null);
 
   const [filterEstado, setFilterEstado] = useState<ReclamoEstado | "">("");
-  const [filterCategoria, setFilterCategoria] = useState<ReclamoCategoria | "">("");
+  const [filterCategoria, setFilterCategoria] = useState<ReclamoCategoria | "">(
+    "",
+  );
   const [filterSearch, setFilterSearch] = useState("");
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -60,6 +64,15 @@ export function ReclamosPanel() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [operationalAction, setOperationalAction] = useState<{
+    id: string;
+    action: OperationalAction;
+  } | null>(null);
+  const [operationalNote, setOperationalNote] = useState("");
+  const [reviewResult, setReviewResult] = useState<"aprobada" | "rechazada">(
+    "aprobada",
+  );
+  const [operationalSaving, setOperationalSaving] = useState(false);
 
   const lastErrorToastRef = useRef<string | null>(null);
   const lastSaveErrorToastRef = useRef<string | null>(null);
@@ -88,15 +101,18 @@ export function ReclamosPanel() {
           codigoSeguimiento: filterSearch.trim().startsWith("REC")
             ? filterSearch.trim()
             : undefined,
-          contactKey: filterSearch.trim() && !filterSearch.trim().startsWith("REC")
-            ? filterSearch.trim()
-            : undefined,
+          contactKey:
+            filterSearch.trim() && !filterSearch.trim().startsWith("REC")
+              ? filterSearch.trim()
+              : undefined,
         });
         setReclamos(result.items);
         setTotalItems(result.pagination.totalItems);
         setTotalPages(result.pagination.totalPages);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Error al cargar reclamos");
+        setError(
+          err instanceof Error ? err.message : "Error al cargar reclamos",
+        );
       } finally {
         setLoading(false);
       }
@@ -176,7 +192,8 @@ export function ReclamosPanel() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("¿Eliminar este reclamo? Esta acción no se puede deshacer.")) return;
+    if (!confirm("¿Eliminar este reclamo? Esta acción no se puede deshacer."))
+      return;
     try {
       await reclamosService.deleteReclamo(id);
       setOkMessage("Reclamo eliminado correctamente.");
@@ -187,13 +204,67 @@ export function ReclamosPanel() {
     }
   };
 
+  const startOperationalAction = (id: string, action: OperationalAction) => {
+    setOperationalAction({ id, action });
+    setOperationalNote("");
+    setReviewResult("aprobada");
+  };
+
+  const cancelOperationalAction = () => {
+    setOperationalAction(null);
+    setOperationalNote("");
+  };
+
+  const submitOperationalAction = async () => {
+    if (!operationalAction || !operationalNote.trim()) {
+      return;
+    }
+
+    setOperationalSaving(true);
+    try {
+      if (operationalAction.action === "review") {
+        await reclamosService.reviewResolution(operationalAction.id, {
+          resultado: reviewResult,
+          comentario: operationalNote.trim(),
+        });
+        setOkMessage("Revisión de resolución registrada.");
+      } else if (operationalAction.action === "new_visit") {
+        await reclamosService.requestNewVisit(operationalAction.id, {
+          motivo: operationalNote.trim(),
+        });
+        setOkMessage("Nueva visita solicitada.");
+      } else {
+        await reclamosService.closeReclamo(
+          operationalAction.id,
+          operationalNote.trim(),
+        );
+        setOkMessage("Reclamo cerrado administrativamente.");
+      }
+
+      cancelOperationalAction();
+      await fetchReclamos(page);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No se pudo completar la operación.",
+      );
+    } finally {
+      setOperationalSaving(false);
+    }
+  };
+
   const pendientes = reclamos.filter((r) => r.estado === "pendiente").length;
   const enProceso = reclamos.filter((r) => r.estado === "en_proceso").length;
   const resueltos = reclamos.filter((r) => r.estado === "resuelto").length;
 
   return (
     <>
-      <div className={styles.toastViewport} aria-live="polite" aria-atomic="true">
+      <div
+        className={styles.toastViewport}
+        aria-live="polite"
+        aria-atomic="true"
+      >
         {toasts.map((toast) => (
           <div key={toast.id} className={styles.toast} data-kind={toast.kind}>
             {toast.text}
@@ -231,22 +302,30 @@ export function ReclamosPanel() {
         />
         <select
           value={filterEstado}
-          onChange={(e) => setFilterEstado(e.target.value as ReclamoEstado | "")}
+          onChange={(e) =>
+            setFilterEstado(e.target.value as ReclamoEstado | "")
+          }
           className={styles.reclamosFilterSelect}
         >
           <option value="">Todos los estados</option>
           {ALL_ESTADOS.map((e) => (
-            <option key={e} value={e}>{ESTADO_LABELS[e]}</option>
+            <option key={e} value={e}>
+              {ESTADO_LABELS[e]}
+            </option>
           ))}
         </select>
         <select
           value={filterCategoria}
-          onChange={(e) => setFilterCategoria(e.target.value as ReclamoCategoria | "")}
+          onChange={(e) =>
+            setFilterCategoria(e.target.value as ReclamoCategoria | "")
+          }
           className={styles.reclamosFilterSelect}
         >
           <option value="">Todas las categorías</option>
           {ALL_CATEGORIAS.map((c) => (
-            <option key={c} value={c}>{CATEGORIA_LABELS[c]}</option>
+            <option key={c} value={c}>
+              {CATEGORIA_LABELS[c]}
+            </option>
           ))}
         </select>
         <button
@@ -268,7 +347,9 @@ export function ReclamosPanel() {
           </header>
 
           {loading && reclamos.length === 0 && (
-            <p style={{ padding: "12px", color: "var(--text-muted)" }}>Cargando...</p>
+            <p style={{ padding: "12px", color: "var(--text-muted)" }}>
+              Cargando...
+            </p>
           )}
 
           {!loading && reclamos.length === 0 && (
@@ -285,7 +366,9 @@ export function ReclamosPanel() {
                 data-selected={editingId === item.id}
               >
                 <div className={styles.complaintTopRow}>
-                  <span className={styles.trackingCode}>{item.codigoSeguimiento}</span>
+                  <span className={styles.trackingCode}>
+                    {item.codigoSeguimiento}
+                  </span>
                   <span
                     className={styles.statusPill}
                     data-status={item.estado.replace("_", "-")}
@@ -306,7 +389,9 @@ export function ReclamosPanel() {
                   <span>{CATEGORIA_LABELS[item.categoria]}</span>
                   <span>Prioridad: {PRIORIDAD_LABELS[item.prioridad]}</span>
                   <span>Canal: {item.canal}</span>
-                  <span>{new Date(item.creadoEn).toLocaleDateString("es-AR")}</span>
+                  <span>
+                    {new Date(item.creadoEn).toLocaleDateString("es-AR")}
+                  </span>
                 </div>
 
                 {item.observaciones && (
@@ -319,7 +404,9 @@ export function ReclamosPanel() {
                   {canManage && (
                     <button
                       type="button"
-                      onClick={() => (editingId === item.id ? cancelEdit() : startEdit(item))}
+                      onClick={() =>
+                        editingId === item.id ? cancelEdit() : startEdit(item)
+                      }
                     >
                       {editingId === item.id ? "Cancelar" : "Editar"}
                     </button>
@@ -333,7 +420,86 @@ export function ReclamosPanel() {
                       Eliminar
                     </button>
                   )}
+                  {canManage && item.estado === "resuelto" && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          startOperationalAction(item.id, "review")
+                        }
+                      >
+                        Revisar resolución
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => startOperationalAction(item.id, "close")}
+                      >
+                        Cerrar reclamo
+                      </button>
+                    </>
+                  )}
+                  {canManage && item.estado !== "cerrado" && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        startOperationalAction(item.id, "new_visit")
+                      }
+                    >
+                      Solicitar nueva visita
+                    </button>
+                  )}
                 </div>
+
+                {operationalAction?.id === item.id && (
+                  <div className={styles.operationalActionPanel}>
+                    <strong>
+                      {operationalAction.action === "review"
+                        ? "Revisar resolución"
+                        : operationalAction.action === "new_visit"
+                          ? "Solicitar nueva visita"
+                          : "Cerrar reclamo"}
+                    </strong>
+                    {operationalAction.action === "review" && (
+                      <select
+                        value={reviewResult}
+                        onChange={(event) =>
+                          setReviewResult(
+                            event.target.value as "aprobada" | "rechazada",
+                          )
+                        }
+                      >
+                        <option value="aprobada">Aprobada</option>
+                        <option value="rechazada">Rechazada</option>
+                      </select>
+                    )}
+                    <textarea
+                      rows={3}
+                      value={operationalNote}
+                      onChange={(event) =>
+                        setOperationalNote(event.target.value)
+                      }
+                      placeholder="Motivo o comentario obligatorio"
+                    />
+                    <div className={styles.actionsRow}>
+                      <button
+                        type="button"
+                        className={styles.submitButton}
+                        onClick={() => void submitOperationalAction()}
+                        disabled={operationalSaving || !operationalNote.trim()}
+                      >
+                        {operationalSaving ? "Procesando..." : "Confirmar"}
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.cancelInlineButton}
+                        onClick={cancelOperationalAction}
+                        disabled={operationalSaving}
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )}
               </article>
             ))}
           </div>
@@ -382,11 +548,16 @@ export function ReclamosPanel() {
                 <select
                   value={editForm.estado}
                   onChange={(e) =>
-                    setEditForm((f) => f && { ...f, estado: e.target.value as ReclamoEstado })
+                    setEditForm(
+                      (f) =>
+                        f && { ...f, estado: e.target.value as ReclamoEstado },
+                    )
                   }
                 >
                   {ALL_ESTADOS.map((e) => (
-                    <option key={e} value={e}>{ESTADO_LABELS[e]}</option>
+                    <option key={e} value={e}>
+                      {ESTADO_LABELS[e]}
+                    </option>
                   ))}
                 </select>
               </label>
@@ -396,7 +567,13 @@ export function ReclamosPanel() {
                 <select
                   value={editForm.prioridad}
                   onChange={(e) =>
-                    setEditForm((f) => f && { ...f, prioridad: e.target.value as ReclamoPrioridad })
+                    setEditForm(
+                      (f) =>
+                        f && {
+                          ...f,
+                          prioridad: e.target.value as ReclamoPrioridad,
+                        },
+                    )
                   }
                 >
                   <option value="alta">Alta</option>
@@ -411,7 +588,9 @@ export function ReclamosPanel() {
                   rows={4}
                   value={editForm.observaciones}
                   onChange={(e) =>
-                    setEditForm((f) => f && { ...f, observaciones: e.target.value })
+                    setEditForm(
+                      (f) => f && { ...f, observaciones: e.target.value },
+                    )
                   }
                   placeholder="Notas internas del agente..."
                 />
