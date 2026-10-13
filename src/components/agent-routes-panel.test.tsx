@@ -101,6 +101,78 @@ describe("AgentRoutesPanel", () => {
     expect(screen.getAllByRole("listitem")[0]).toHaveAttribute("data-current", "true");
   });
 
+  it("recovers a saved stop after an error response without repeating the POST", async () => {
+    const route = assignedRoute("in_progress");
+    getAssignedRoutes.mockResolvedValueOnce({ data: [route] });
+    getAssignedRoutes.mockResolvedValue({ data: [{
+      ...route,
+      stops: route.stops.map((stop) => stop.id === "stop-1" ? { ...stop, status: "resuelto", intervention: { result: "resuelto", observation: "Registrado" } } : stop),
+    }] });
+    registerIntervention.mockRejectedValueOnce(new Error("HTTP 502"));
+    render(<AgentRoutesPanel />);
+    fireEvent.click(await screen.findByRole("button", { name: "Cerrar trabajo" }));
+    await screen.findByText("El trabajo ya figura registrado. Se actualizo la ruta tras un error de respuesta.");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("listitem")[1]).toHaveAttribute("aria-current", "step");
+    expect(registerIntervention).toHaveBeenCalledTimes(1);
+  });
+
+  it("recovers the completed route after the last stop returns an error", async () => {
+    const route = assignedRoute("in_progress");
+    route.stops = route.stops.filter((stop) => stop.id === "stop-2");
+    getAssignedRoutes.mockResolvedValueOnce({ data: [route] });
+    getAssignedRoutes.mockResolvedValue({ data: [{
+      ...route, status: "completed",
+      stops: route.stops.map((stop) => ({ ...stop, status: "resuelto", intervention: { result: "resuelto", observation: null } })),
+    }] });
+    registerIntervention.mockRejectedValueOnce(new Error("HTTP 502"));
+    render(<AgentRoutesPanel />);
+    fireEvent.click(await screen.findByRole("button", { name: "Cerrar trabajo" }));
+    await screen.findByText("Ruta completada. El ultimo trabajo ya figura registrado; se recupero el estado tras un error de respuesta.");
+    expect(screen.queryByRole("button", { name: "Cerrar trabajo" })).not.toBeInTheDocument();
+    expect(registerIntervention).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks another close until refresh succeeds when the outcome cannot be confirmed", async () => {
+    getAssignedRoutes.mockResolvedValueOnce({ data: [assignedRoute("in_progress")] });
+    getAssignedRoutes.mockRejectedValueOnce(new Error("Sin conexion"));
+    registerIntervention.mockRejectedValueOnce(new Error("HTTP 502"));
+    render(<AgentRoutesPanel />);
+    fireEvent.click(await screen.findByRole("button", { name: "Cerrar trabajo" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("No se pudo confirmar si el trabajo fue registrado");
+    expect(screen.getByRole("button", { name: "Cerrar trabajo" })).toBeDisabled();
+    getAssignedRoutes.mockResolvedValue({ data: [assignedRoute("in_progress")] });
+    fireEvent.click(screen.getByRole("button", { name: "Actualizar rutas" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Cerrar trabajo" })).toBeEnabled());
+    expect(registerIntervention).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps confirmed synchronization failures visible while advancing the route", async () => {
+    const route = assignedRoute("in_progress");
+    getAssignedRoutes.mockResolvedValueOnce({ data: [route] });
+    getAssignedRoutes.mockResolvedValue({ data: [{
+      ...route,
+      stops: route.stops.map((stop) => stop.id === "stop-1" ? { ...stop, status: "visitado", intervention: { result: "resuelto", observation: null } } : stop),
+    }] });
+    registerIntervention.mockRejectedValueOnce(new Error("El trabajo fue registrado, pero fallo la sincronizacion del reclamo."));
+    render(<AgentRoutesPanel />);
+    fireEvent.click(await screen.findByRole("button", { name: "Cerrar trabajo" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("la sincronizacion del reclamo sigue pendiente");
+    expect(screen.getAllByRole("listitem")[1]).toHaveAttribute("aria-current", "step");
+    expect(registerIntervention).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks stale work after a successful save when refreshing the route fails", async () => {
+    getAssignedRoutes.mockResolvedValueOnce({ data: [assignedRoute("in_progress")] });
+    getAssignedRoutes.mockRejectedValueOnce(new Error("Sin conexion"));
+    render(<AgentRoutesPanel />);
+    fireEvent.click(await screen.findByRole("button", { name: "Cerrar trabajo" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Sin conexion");
+    expect(screen.getByRole("button", { name: "Cerrar trabajo" })).toBeDisabled();
+    expect(screen.getByText("Trabajo registrado.")).toBeInTheDocument();
+    expect(registerIntervention).toHaveBeenCalledTimes(1);
+  });
+
   it("exposes accessible progress, current step and readable categories", async () => {
     getAssignedRoutes.mockResolvedValue({ data: [assignedRoute("in_progress")] });
     render(<AgentRoutesPanel />);

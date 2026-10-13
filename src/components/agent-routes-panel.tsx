@@ -25,6 +25,7 @@ export function AgentRoutesPanel() {
   const [selectedRouteId, setSelectedRouteId] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [requiresRefresh, setRequiresRefresh] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [result, setResult] = useState<InterventionResult>("resuelto");
@@ -36,6 +37,7 @@ export function AgentRoutesPanel() {
     try {
       const response = await routingService.getAssignedRoutes();
       setRoutes(response.data);
+      setRequiresRefresh(false);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "No se pudieron cargar las rutas.");
     } finally {
@@ -85,7 +87,7 @@ export function AgentRoutesPanel() {
   }
 
   async function finishStop() {
-    if (!route || !nextStop || route.status !== "in_progress" || busy) return;
+    if (!route || !nextStop || route.status !== "in_progress" || busy || requiresRefresh) return;
     setBusy(true);
     setError("");
     setNotice("");
@@ -96,13 +98,37 @@ export function AgentRoutesPanel() {
         result,
         observation: observation.trim() || undefined,
       });
+      setRequiresRefresh(true);
       setObservation("");
       setResult("resuelto");
       setSelectedRouteId(route.id);
       setNotice(finished + 1 === stops.length ? "Ruta completada. Todos los trabajos fueron registrados." : "Trabajo registrado.");
       await loadRoute();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "No se pudo registrar el trabajo.");
+      const message = cause instanceof Error ? cause.message : "No se pudo registrar el trabajo.";
+      setRequiresRefresh(true);
+      try {
+        const response = await routingService.getAssignedRoutes();
+        setRoutes(response.data);
+        setSelectedRouteId(route.id);
+        setRequiresRefresh(false);
+        const refreshedRoute = response.data.find((item) => item.id === route.id);
+        const refreshedStop = refreshedRoute?.stops.find((stop) => stop.id === nextStop.id);
+        if (refreshedStop && refreshedStop.status !== "pendiente" && refreshedStop.intervention) {
+          setObservation("");
+          setResult("resuelto");
+          setNotice(refreshedRoute?.status === "completed"
+            ? "Ruta completada. El ultimo trabajo ya figura registrado; se recupero el estado tras un error de respuesta."
+            : "El trabajo ya figura registrado. Se actualizo la ruta tras un error de respuesta.");
+          if (message.includes("fallo la sincronizacion del reclamo")) {
+            setError("El trabajo esta guardado en la ruta, pero la sincronizacion del reclamo sigue pendiente.");
+          }
+        } else {
+          setError(message);
+        }
+      } catch {
+        setError(`${message} No se pudo confirmar si el trabajo fue registrado. Actualiza la ruta antes de volver a intentar.`);
+      }
     } finally {
       setBusy(false);
     }
@@ -174,7 +200,7 @@ export function AgentRoutesPanel() {
                   </a>
                   <p className={styles.agentReference}>Reclamo {nextStop.reclamoId}</p>
                   {route.status === "assigned" ? (
-                    <button className={styles.agentPrimaryButton} disabled={busy || loading} onClick={() => void startRoute()} type="button">
+                    <button className={styles.agentPrimaryButton} disabled={busy || loading || requiresRefresh} onClick={() => void startRoute()} type="button">
                       <Play size={18} aria-hidden="true" />{busy ? "Comenzando..." : "Comenzar ruta"}
                     </button>
                   ) : (
@@ -190,7 +216,7 @@ export function AgentRoutesPanel() {
                         <textarea id="intervention-observation" rows={4} maxLength={2000} value={observation} disabled={busy || loading} onChange={(event) => setObservation(event.target.value)} aria-describedby="observation-count" />
                         <span id="observation-count" className={styles.agentCharacterCount}>{observation.length}/2000</span>
                       </div>
-                      <button className={styles.agentPrimaryButton} disabled={busy || loading} type="submit">
+                      <button className={styles.agentPrimaryButton} disabled={busy || loading || requiresRefresh} type="submit">
                         <Check size={18} aria-hidden="true" />{busy ? "Guardando..." : "Cerrar trabajo"}
                       </button>
                     </form>
