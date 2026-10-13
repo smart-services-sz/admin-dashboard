@@ -8,10 +8,12 @@ import { ReclamosPanel } from "./reclamos-panel";
 import { RoutingPlansPanel } from "./routing-plans-panel";
 import { RoutingRoutesPanel } from "./routing-routes-panel";
 import { RoutingGeneratedPanel } from "./routing-generated-panel";
+import { AgentRoutesPanel } from "./agent-routes-panel";
 import { LogoutButton } from "@/components/logout-button";
 import styles from "./admin-dashboard.module.css";
 
 type Section =
+  | "mis-rutas"
   | "reclamos"
   | "ruteo-planes"
   | "ruteo-rutas"
@@ -21,6 +23,7 @@ type Section =
 type Theme = "light" | "dark";
 
 const sectionTitles: Record<Section, string> = {
+  "mis-rutas": "Mis rutas asignadas",
   reclamos: "Gestion de reclamos",
   "ruteo-planes": "Ruteo y asignacion · Planes",
   "ruteo-rutas": "Ruteo y asignacion · Rutas",
@@ -126,12 +129,13 @@ type AdminDashboardProps = {
 export default function AdminDashboard({ user }: AdminDashboardProps) {
   const { hasRole, hasPermission } = useAuth();
 
-  const canViewReclamos = hasPermission("VIEW_RECLAMOS") || hasRole("ADMIN") || hasRole("AGENT");
+  const isAgent = hasRole("AGENT") && !hasRole("ADMIN");
+  const canViewReclamos = !isAgent && (hasPermission("VIEW_RECLAMOS") || hasRole("ADMIN"));
   const canManageAccess = hasRole("ADMIN");
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [activeSection, setActiveSection] = useState<Section>("reclamos");
+  const [activeSection, setActiveSection] = useState<Section>(isAgent ? "mis-rutas" : "reclamos");
 
   const [theme, setTheme] = useState<Theme>(() => {
     if (typeof window === "undefined") {
@@ -171,6 +175,10 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
   };
 
   const renderMainContent = () => {
+    if (isAgent) {
+      return <AgentRoutesPanel />;
+    }
+
     if (activeSection === "metricas") {
       return (
         <section className={styles.placeholderCard}>
@@ -241,12 +249,25 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
             <span className={styles.brandDot} />
             <div>
               <strong>SmartService</strong>
-              <small>Admin dashboard</small>
+              <small>{isAgent ? "Panel de agente" : "Admin dashboard"}</small>
             </div>
           </div>
         </div>
 
         <nav className={styles.navMenu}>
+          {isAgent && (
+            <button
+              type="button"
+              data-active
+              onClick={() => {
+                setActiveSection("mis-rutas");
+                setIsSidebarOpen(false);
+              }}
+            >
+              <RoutingIcon />
+              <span className={styles.navLabel}>Mis rutas</span>
+            </button>
+          )}
           {canViewReclamos && (
             <button
               type="button"
@@ -299,7 +320,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
               <span className={styles.navLabel}>Rutas generadas</span>
             </button>
           )}
-          <button
+          {!isAgent && <button
             type="button"
             data-active={activeSection === "metricas"}
             onClick={() => {
@@ -309,7 +330,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
           >
             <MetricsIcon />
             <span className={styles.navLabel}>Metricas</span>
-          </button>
+          </button>}
           {canManageAccess && (
             <>
               <button
@@ -366,8 +387,8 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
               <span />
             </button>
             <div>
-              <p>Panel administrativo</p>
-              <strong>{sectionTitles[activeSection]}</strong>
+              <p>{isAgent ? "Panel de agente" : "Panel administrativo"}</p>
+              <strong>{sectionTitles[isAgent ? "mis-rutas" : activeSection]}</strong>
             </div>
           </div>
 
@@ -384,9 +405,9 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
             >
               {theme === "dark" ? "☀ Claro" : "🌙 Oscuro"}
             </button>
-            <button className={styles.primaryAction} type="button">
+            {!isAgent && <button className={styles.primaryAction} type="button">
               Exportar reporte
-            </button>
+            </button>}
             <LogoutButton />
           </div>
         </header>

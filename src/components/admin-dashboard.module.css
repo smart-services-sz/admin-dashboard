@@ -365,6 +365,37 @@
   animation: riseIn 360ms ease;
 }
 
+.agentStops {
+  display: grid;
+  gap: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agentStop {
+  display: grid;
+  gap: 10px;
+  padding: 18px 0;
+  border-top: 1px solid var(--line-soft);
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.agentStop[data-current="true"] {
+  border-top-color: var(--brand);
+}
+
+.agentStop textarea {
+  width: 100%;
+  min-height: 90px;
+  padding: 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  resize: vertical;
+}
+
 .metricsGrid {
   display: grid;
   gap: 10px;

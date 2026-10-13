@@ -79,6 +79,25 @@ export interface RoutingRouteResult {
   stops: RoutingStop[];
 }
 
+export type InterventionResult = "resuelto" | "no_resuelto" | "requiere_nueva_visita" | "no_corresponde";
+
+export interface AssignedRoute {
+  id: string;
+  nombre: string;
+  crewId: string;
+  status: "assigned" | "in_progress" | "completed" | "cancelled";
+  startedAt: string | null;
+  completedAt: string | null;
+  totalDistanceKm: number;
+  totalDurationMin: number;
+  plan: { id: string; planningDate: string; status: string };
+  stops: Array<RoutingStop & {
+    id: string;
+    status: string;
+    intervention: { result: InterventionResult; observation: string | null } | null;
+  }>;
+}
+
 export interface RoutingSimulationResult {
   status: string;
   generatedAt: string;
@@ -195,6 +214,29 @@ export interface RoutingPlanListItem {
 }
 
 class RoutingService {
+  getAssignedRoutes(): Promise<{ status: string; data: AssignedRoute[] }> {
+    return apiFetch(`${BASE}/assigned-routes`);
+  }
+
+  startRoute(routeId: string): Promise<{ status: string; message: string }> {
+    return apiFetch(`${BASE}/routes/status`, {
+      method: "PUT",
+      body: JSON.stringify({ routeId, status: "in_progress" }),
+    });
+  }
+
+  registerIntervention(payload: {
+    routeId: string;
+    stopId: string;
+    result: InterventionResult;
+    observation?: string;
+  }): Promise<{ status: string; message: string }> {
+    return apiFetch(`${BASE}/interventions`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
   getRules(): Promise<RoutingRulesResponse> {
     return apiFetch<RoutingRulesResponse>(`${BASE}/rules`);
   }
