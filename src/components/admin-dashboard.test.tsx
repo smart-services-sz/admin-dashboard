@@ -41,4 +41,15 @@ describe("AdminDashboard role navigation", () => {
     expect(screen.getByRole("button", { name: "Metricas" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Mis rutas" })).not.toBeInTheDocument();
   });
+
+  it("announces the actual mobile menu state", () => {
+    render(<AdminDashboard user={{ userId: "agent-1", email: "agent@test.local", roles: auth.roles, permissions: [] }} />);
+    const toggle = screen.getByRole("button", { name: "Abrir menu lateral" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(toggle).toHaveAttribute("data-open", "false");
+    fireEvent.click(toggle);
+    expect(screen.getByRole("button", { name: "Cerrar menu lateral" })).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Mis rutas" }));
+    expect(screen.getByRole("button", { name: "Abrir menu lateral" })).toHaveAttribute("aria-expanded", "false");
+  });
 });

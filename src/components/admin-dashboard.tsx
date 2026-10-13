@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useState, useSyncExternalStore } from "react";
 import type { AuthUser } from "@/lib/auth.server";
 import { useAuth } from "@/components/auth-context";
 import { AccessManagementPanel, type AccessSection } from "./access-management-panel";
@@ -126,8 +126,23 @@ type AdminDashboardProps = {
   user: AuthUser;
 };
 
+function subscribeToDesktop(listener: () => void) {
+  const media = window.matchMedia("(min-width: 1024px)");
+  media.addEventListener?.("change", listener);
+  return () => media.removeEventListener?.("change", listener);
+}
+
+function getDesktopSnapshot() {
+  return window.matchMedia("(min-width: 1024px)").matches;
+}
+
+function getServerDesktopSnapshot() {
+  return false;
+}
+
 export default function AdminDashboard({ user }: AdminDashboardProps) {
   const { hasRole, hasPermission } = useAuth();
+  const isDesktop = useSyncExternalStore(subscribeToDesktop, getDesktopSnapshot, getServerDesktopSnapshot);
 
   const isAgent = hasRole("AGENT") && !hasRole("ADMIN");
   const canViewReclamos = !isAgent && (hasPermission("VIEW_RECLAMOS") || hasRole("ADMIN"));
@@ -158,7 +173,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
       return;
     }
 
-    if (window.matchMedia("(min-width: 1024px)").matches) {
+    if (isDesktop) {
       setIsSidebarCollapsed((prev) => !prev);
       return;
     }
@@ -232,7 +247,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
   };
 
   return (
-    <div className={styles.dashboardShell} data-theme={theme}>
+    <div className={styles.dashboardShell} data-theme={theme} data-role={isAgent ? "agent" : "admin"}>
       <div
         className={styles.backdrop}
         aria-hidden={!isSidebarOpen}
@@ -378,9 +393,9 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
               className={styles.sidebarToggle}
               type="button"
               onClick={handleSidebarToggle}
-              aria-label="Abrir o cerrar menu lateral"
-              aria-expanded={isSidebarOpen || !isSidebarCollapsed}
-              data-open={isSidebarOpen || !isSidebarCollapsed}
+              aria-label={isDesktop ? "Expandir o contraer menu lateral" : isSidebarOpen ? "Cerrar menu lateral" : "Abrir menu lateral"}
+              aria-expanded={isDesktop ? !isSidebarCollapsed : isSidebarOpen}
+              data-open={isDesktop ? !isSidebarCollapsed : isSidebarOpen}
             >
               <span />
               <span />
