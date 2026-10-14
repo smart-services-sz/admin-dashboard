@@ -3,9 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { ReclamosPanel } from "./reclamos-panel";
 
-const { getReclamos, getReclamoById } = vi.hoisted(() => ({
+const { getReclamos, getReclamoById, getHistory } = vi.hoisted(() => ({
   getReclamos: vi.fn(),
   getReclamoById: vi.fn(),
+  getHistory: vi.fn(),
 }));
 
 vi.mock("@/components/auth-context", () => ({
@@ -16,7 +17,7 @@ vi.mock("@/components/auth-context", () => ({
 }));
 
 vi.mock("@/services/reclamos.service", () => ({
-  reclamosService: { getReclamos, getReclamoById },
+  reclamosService: { getReclamos, getReclamoById, getHistory },
   ESTADO_LABELS: { pendiente: "Pendiente", en_proceso: "En proceso", resuelto: "Resuelto", rechazado: "Rechazado", cerrado: "Cerrado" },
   CATEGORIA_LABELS: { alumbrado: "Alumbrado" },
   PRIORIDAD_LABELS: { media: "Media" },
@@ -61,6 +62,31 @@ describe("ReclamosPanel evidence details", () => {
         },
       ],
     });
+    getHistory.mockResolvedValue({
+      status: "ok",
+      data: [
+        {
+          id: "history-1",
+          reclamoId: "claim-1",
+          accion: "claim.reopened",
+          origen: "citizen",
+          estadoAnterior: "cerrado",
+          estadoNuevo: "en_proceso",
+          motivo: "Sigue sin resolverse",
+          creadoEn: "2026-10-14T12:30:00.000Z",
+          metadata: null,
+        },
+        {
+          id: "history-2",
+          reclamoId: "claim-1",
+          accion: "citizen.response",
+          origen: "citizen",
+          motivo: "No estoy conforme",
+          creadoEn: "2026-10-14T12:35:00.000Z",
+          metadata: { tipo: "disconforme" },
+        },
+      ],
+    });
   });
 
   it("loads the authenticated detail and displays the temporary evidence link", async () => {
@@ -74,5 +100,9 @@ describe("ReclamosPanel evidence details", () => {
       "https://private-storage.example/signed-object",
     );
     expect(download).toHaveAttribute("rel", "noreferrer");
+    expect(await screen.findByText("Reclamo reabierto")).toBeInTheDocument();
+    expect(screen.getByText("Respuesta del ciudadano")).toBeInTheDocument();
+    expect(screen.getByText("Sigue sin resolverse")).toBeInTheDocument();
+    expect(screen.getByText("Respuesta: disconforme")).toBeInTheDocument();
   });
 });

@@ -8,6 +8,7 @@ import {
   type ReclamoEstado,
   type ReclamoCategoria,
   type ReclamoPrioridad,
+  type ReclamoHistoryEntry,
   type UpdateReclamoPayload,
   ESTADO_LABELS,
   CATEGORIA_LABELS,
@@ -40,6 +41,25 @@ function emptyEditForm(reclamo: Reclamo): EditForm {
   };
 }
 
+const HISTORY_ACTION_LABELS: Record<string, string> = {
+  "claim.created": "Reclamo creado",
+  "claim.status_changed": "Cambio de estado",
+  "claim.updated": "Reclamo actualizado",
+  "resolution.reviewed": "Resolución revisada",
+  "new_visit.requested": "Nueva visita solicitada",
+  "claim.closed": "Reclamo cerrado",
+  "claim.reopened": "Reclamo reabierto",
+  "citizen.response": "Respuesta del ciudadano",
+  "evidence.attached": "Evidencia adjuntada",
+};
+
+function historyActionLabel(entry: ReclamoHistoryEntry): string {
+  return (
+    HISTORY_ACTION_LABELS[entry.accion] ??
+    entry.accion.replace(/[._]/g, " ")
+  );
+}
+
 export function ReclamosPanel() {
   const { hasPermission, hasRole } = useAuth();
   const canManage = hasPermission("MANAGE_RECLAMOS") || hasRole("ADMIN");
@@ -53,6 +73,7 @@ export function ReclamosPanel() {
   const [error, setError] = useState<string | null>(null);
   const [okMessage, setOkMessage] = useState<string | null>(null);
   const [detailClaim, setDetailClaim] = useState<Reclamo | null>(null);
+  const [detailHistory, setDetailHistory] = useState<ReclamoHistoryEntry[]>([]);
   const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
 
@@ -211,7 +232,12 @@ export function ReclamosPanel() {
     setDetailLoadingId(id);
     setDetailError(null);
     try {
-      setDetailClaim(await reclamosService.getReclamoById(id));
+      const [claim, history] = await Promise.all([
+        reclamosService.getReclamoById(id),
+        reclamosService.getHistory(id),
+      ]);
+      setDetailClaim(claim);
+      setDetailHistory(history.data);
     } catch (err) {
       setDetailClaim(null);
       setDetailError(
@@ -587,6 +613,39 @@ export function ReclamosPanel() {
               </ul>
             ) : (
               <p>No hay evidencias adjuntas.</p>
+            )}
+            <h3>Historial del reclamo</h3>
+            {detailHistory.length > 0 ? (
+              <ol className={styles.complaintsList}>
+                {detailHistory.map((entry) => (
+                  <li
+                    key={entry.id}
+                    className={styles.complaintCard}
+                    data-selected="false"
+                  >
+                    <strong>{historyActionLabel(entry)}</strong>
+                    <span>
+                      {new Date(entry.creadoEn).toLocaleString("es-AR")}
+                    </span>
+                    <span>
+                      Actor: {entry.origen === "citizen" ? "Ciudadano" : entry.actorId || entry.origen}
+                    </span>
+                    {(entry.estadoAnterior || entry.estadoNuevo) && (
+                      <span>
+                        Estado: {entry.estadoAnterior ? ESTADO_LABELS[entry.estadoAnterior] : "—"}
+                        {" → "}
+                        {entry.estadoNuevo ? ESTADO_LABELS[entry.estadoNuevo] : "—"}
+                      </span>
+                    )}
+                    {typeof entry.metadata?.tipo === "string" && (
+                      <span>Respuesta: {entry.metadata.tipo}</span>
+                    )}
+                    {entry.motivo && <p>{entry.motivo}</p>}
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p>No hay acciones registradas.</p>
             )}
           </article>
         )}
