@@ -50,6 +50,36 @@ describe("proxyGatewayAuth", () => {
     }));
   });
 
+  it("forwards multipart bytes without decoding or changing the boundary", async () => {
+    const bytes = new Uint8Array([0, 255, 1, 2, 128]);
+    const multipartRequest = new Request(
+      "https://dashboard.test/api/routing/interventions/evidence",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "multipart/form-data; boundary=smartservice-test",
+        },
+        body: bytes,
+      },
+    );
+    fetchMock.mockResolvedValue(Response.json({ status: "ok" }));
+
+    await proxyGatewayAuth(
+      multipartRequest,
+      "/api/routing/interventions/evidence",
+      "POST",
+    );
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.headers).toMatchObject({
+      "content-type": "multipart/form-data; boundary=smartservice-test",
+    });
+    expect(init.body).toBeInstanceOf(ArrayBuffer);
+    expect(Array.from(new Uint8Array(init.body as ArrayBuffer))).toEqual([
+      0, 255, 1, 2, 128,
+    ]);
+  });
+
   it("returns JSON when the connection fails without leaking request data", async () => {
     fetchMock.mockRejectedValue(new TypeError("fetch failed"));
     const response = await proxyGatewayAuth(request(), "/api/routing/interventions", "POST");

@@ -52,6 +52,9 @@ export function ReclamosPanel() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [okMessage, setOkMessage] = useState<string | null>(null);
+  const [detailClaim, setDetailClaim] = useState<Reclamo | null>(null);
+  const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
 
   const [filterEstado, setFilterEstado] = useState<ReclamoEstado | "">("");
   const [filterCategoria, setFilterCategoria] = useState<ReclamoCategoria | "">(
@@ -201,6 +204,21 @@ export function ReclamosPanel() {
       await fetchReclamos(page);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al eliminar");
+    }
+  };
+
+  const handleViewDetails = async (id: string) => {
+    setDetailLoadingId(id);
+    setDetailError(null);
+    try {
+      setDetailClaim(await reclamosService.getReclamoById(id));
+    } catch (err) {
+      setDetailClaim(null);
+      setDetailError(
+        err instanceof Error ? err.message : "No se pudo cargar el detalle.",
+      );
+    } finally {
+      setDetailLoadingId(null);
     }
   };
 
@@ -401,6 +419,13 @@ export function ReclamosPanel() {
                 )}
 
                 <div className={styles.actionsRow}>
+                  <button
+                    type="button"
+                    onClick={() => void handleViewDetails(item.id)}
+                    disabled={detailLoadingId === item.id}
+                  >
+                    {detailLoadingId === item.id ? "Cargando..." : "Detalle"}
+                  </button>
                   {canManage && (
                     <button
                       type="button"
@@ -527,6 +552,44 @@ export function ReclamosPanel() {
             </div>
           )}
         </article>
+
+        {detailError && (
+          <article className={styles.panel} role="alert">
+            <p>{detailError}</p>
+          </article>
+        )}
+
+        {detailClaim && (
+          <article className={styles.panel}>
+            <header className={styles.panelHeader}>
+              <h2>Detalle del reclamo {detailClaim.codigoSeguimiento}</h2>
+              <button
+                type="button"
+                className={styles.cancelInlineButton}
+                onClick={() => setDetailClaim(null)}
+              >
+                Cerrar detalle
+              </button>
+            </header>
+            <p>{detailClaim.problema}</p>
+            <p>{detailClaim.direccion}</p>
+            <h3>Evidencias adjuntas</h3>
+            {detailClaim.evidencias?.length ? (
+              <ul>
+                {detailClaim.evidencias.map((evidencia) => (
+                  <li key={`${evidencia.nombreArchivo}-${evidencia.uploadedAt}`}>
+                    <span>{evidencia.nombreArchivo}</span>{" "}
+                    <a href={evidencia.url} target="_blank" rel="noreferrer">
+                      Descargar
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>No hay evidencias adjuntas.</p>
+            )}
+          </article>
+        )}
 
         {/* Edit panel */}
         {canManage && editingId && editForm && (

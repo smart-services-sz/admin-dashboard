@@ -21,13 +21,17 @@ export async function apiFetch<T>(
   init?: RequestInit,
   retryOn401: boolean = true,
 ): Promise<T> {
+  const headers = new Headers(init?.headers);
+  const isFormData =
+    typeof FormData !== "undefined" && init?.body instanceof FormData;
+  if (!isFormData && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
   let response = await fetch(input, {
     ...init,
     credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
+    headers,
   });
 
   if (response.status === 401 && retryOn401 && typeof window !== "undefined") {
@@ -44,10 +48,7 @@ export async function apiFetch<T>(
       response = await fetch(input, {
         ...init,
         credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          ...(init?.headers ?? {}),
-        },
+        headers,
       });
     } else {
       window.location.href = "/login";

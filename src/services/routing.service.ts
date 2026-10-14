@@ -81,6 +81,15 @@ export interface RoutingRouteResult {
 
 export type InterventionResult = "resuelto" | "no_resuelto" | "requiere_nueva_visita" | "no_corresponde";
 
+export interface RouteEvidence {
+  id: string;
+  tipo: "imagen" | "video" | "documento";
+  nombreArchivo: string;
+  urlArchivo: string;
+  descripcion?: string | null;
+  createdAt: string;
+}
+
 export interface AssignedRoute {
   id: string;
   nombre: string;
@@ -94,7 +103,12 @@ export interface AssignedRoute {
   stops: Array<RoutingStop & {
     id: string;
     status: string;
-    intervention: { result: InterventionResult; observation: string | null } | null;
+    intervention: {
+      id?: string;
+      result: InterventionResult;
+      observation: string | null;
+      evidences?: RouteEvidence[];
+    } | null;
   }>;
 }
 
@@ -234,6 +248,21 @@ class RoutingService {
     return apiFetch(`${BASE}/interventions`, {
       method: "POST",
       body: JSON.stringify(payload),
+    });
+  }
+
+  attachInterventionEvidence(payload: {
+    interventionId: string;
+    file: File;
+    descripcion?: string;
+  }): Promise<{ status: string; data: RouteEvidence }> {
+    const formData = new FormData();
+    formData.append("interventionId", payload.interventionId);
+    formData.append("evidencia", payload.file);
+    if (payload.descripcion) formData.append("descripcion", payload.descripcion);
+    return apiFetch(`${BASE}/interventions/evidence`, {
+      method: "POST",
+      body: formData,
     });
   }
 

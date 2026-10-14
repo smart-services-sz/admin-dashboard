@@ -30,6 +30,7 @@ export function AgentRoutesPanel() {
   const [notice, setNotice] = useState("");
   const [result, setResult] = useState<InterventionResult>("resuelto");
   const [observation, setObservation] = useState("");
+  const [evidenceBusyId, setEvidenceBusyId] = useState<string | null>(null);
 
   async function loadRoute() {
     setLoading(true);
@@ -131,6 +132,33 @@ export function AgentRoutesPanel() {
       }
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function attachEvidence(
+    stopId: string,
+    interventionId: string,
+    file: File,
+  ) {
+    if (file.size > 5 * 1024 * 1024) {
+      setError("La evidencia debe pesar como maximo 5 MB.");
+      return;
+    }
+    setEvidenceBusyId(stopId);
+    setError("");
+    setNotice("");
+    try {
+      await routingService.attachInterventionEvidence({ interventionId, file });
+      setNotice("Evidencia adjuntada correctamente.");
+      await loadRoute();
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "No se pudo adjuntar la evidencia.",
+      );
+    } finally {
+      setEvidenceBusyId(null);
     }
   }
 
@@ -241,6 +269,43 @@ export function AgentRoutesPanel() {
                       <p>{CATEGORIA_LABELS[stop.categoria] ?? stop.categoria}</p>
                       <span className={styles.agentStopState}>{stop.intervention ? resultLabels[stop.intervention.result] : stop.id === nextStop?.id ? "Siguiente trabajo" : "Pendiente"}</span>
                       {stop.intervention?.observation && <p className={styles.agentStopObservation}>{stop.intervention.observation}</p>}
+                      {stop.intervention && (
+                        <div className={styles.agentEvidence}>
+                          {stop.intervention.evidences?.map((evidence) => (
+                            <a
+                              key={evidence.id}
+                              href={evidence.urlArchivo}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              {evidence.nombreArchivo}
+                            </a>
+                          ))}
+                          {stop.intervention.id && (
+                            <label>
+                              {evidenceBusyId === stop.id
+                                ? "Subiendo evidencia..."
+                                : "Adjuntar evidencia"}
+                              <input
+                                type="file"
+                                accept="image/jpeg,image/png,image/webp,video/mp4,application/pdf"
+                                disabled={busy || loading || evidenceBusyId !== null}
+                                onChange={(event) => {
+                                  const file = event.currentTarget.files?.[0];
+                                  event.currentTarget.value = "";
+                                  if (file) {
+                                    void attachEvidence(
+                                      stop.id,
+                                      stop.intervention!.id!,
+                                      file,
+                                    );
+                                  }
+                                }}
+                              />
+                            </label>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <a className={styles.agentStopMap} href={`https://www.google.com/maps/search/?api=1&query=${stop.lat},${stop.lng}`} target="_blank" rel="noopener noreferrer" aria-label={`Ver ubicacion de parada ${stop.sequence} (abre en otra pestana)`} title={`Ver ubicacion de parada ${stop.sequence}`}><MapPin size={18} aria-hidden="true" /></a>
                   </li>

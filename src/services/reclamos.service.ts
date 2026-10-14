@@ -22,6 +22,14 @@ export type ReclamoPrioridad = "alta" | "media" | "baja";
 export type Canal =
   "whatsapp" | "web" | "email" | "instagram" | "facebook" | "manual" | "other";
 
+export interface ReclamoEvidence {
+  nombreArchivo: string;
+  contentType: string;
+  size: number;
+  uploadedAt: string;
+  url: string;
+}
+
 export interface Reclamo {
   id: string;
   codigoSeguimiento: string;
@@ -41,6 +49,8 @@ export interface Reclamo {
   creadoEn: string;
   actualizadoEn: string;
   resolvedAt?: string | null;
+  evidencias?: ReclamoEvidence[];
+  evidenciasCount?: number;
 }
 
 export interface ReclamoListResponse {

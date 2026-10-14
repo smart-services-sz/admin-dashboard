@@ -19,7 +19,14 @@ export async function proxyGatewayAuth(
   path: string,
   method: string,
 ) {
-  const body = method === "GET" ? undefined : await request.text();
+  const contentType = request.headers.get("content-type") ?? "application/json";
+  const isMultipart = contentType.toLowerCase().startsWith("multipart/form-data");
+  const body =
+    method === "GET"
+      ? undefined
+      : isMultipart
+        ? await request.arrayBuffer()
+        : await request.text();
 
   let upstream: Response;
   let text: string;
@@ -27,7 +34,7 @@ export async function proxyGatewayAuth(
     upstream = await fetch(`${gatewayUrl}${path}`, {
       method,
       headers: {
-        "content-type": request.headers.get("content-type") ?? "application/json",
+        "content-type": contentType,
         cookie: buildCookieHeader(request),
         "user-agent": request.headers.get("user-agent") ?? "admin-dashboard",
         "x-forwarded-for": request.headers.get("x-forwarded-for") ?? "127.0.0.1",
