@@ -870,7 +870,7 @@ export function AccessManagementPanel({ section }: AccessManagementPanelProps) {
                       cargo: event.target.value,
                     }))
                   }
-                  required
+                  required={editingUserId === null}
                 />
               </label>
               <label>
@@ -883,7 +883,7 @@ export function AccessManagementPanel({ section }: AccessManagementPanelProps) {
                       legajo: event.target.value,
                     }))
                   }
-                  required
+                  required={editingUserId === null}
                 />
               </label>
               <label>
@@ -896,7 +896,7 @@ export function AccessManagementPanel({ section }: AccessManagementPanelProps) {
                       area: event.target.value,
                     }))
                   }
-                  required
+                  required={editingUserId === null}
                 />
               </label>
               <label>
