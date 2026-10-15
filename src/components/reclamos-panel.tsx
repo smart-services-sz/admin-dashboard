@@ -444,6 +444,28 @@ export function ReclamosPanel() {
                   </p>
                 )}
 
+                {item.posiblesDuplicados && item.posiblesDuplicados.length > 0 && (
+                  <div className={styles.duplicateNotice}>
+                    <strong>Posibles duplicados: revisar, no se fusionaron</strong>
+                    {item.posiblesDuplicados.map((candidate) => (
+                      <div key={candidate.reclamoId}>
+                        <span>
+                          {candidate.codigoSeguimiento} · {candidate.distanciaMetros} m · similitud {candidate.similitud}%
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => void handleViewDetails(candidate.reclamoId)}
+                          disabled={detailLoadingId === candidate.reclamoId}
+                        >
+                          {detailLoadingId === candidate.reclamoId
+                            ? "Cargando..."
+                            : "Revisar candidato"}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 <div className={styles.actionsRow}>
                   <button
                     type="button"

@@ -41,6 +41,17 @@ describe("ReclamosPanel evidence details", () => {
           categoria: "alumbrado",
           prioridad: "media",
           estado: "pendiente",
+          posiblesDuplicados: [
+            {
+              reclamoId: "claim-older",
+              codigoSeguimiento: "REC-OLD123",
+              problema: "Luminaria apagada",
+              direccion: "San Martin 123, Funes",
+              estado: "en_proceso",
+              distanciaMetros: 12,
+              similitud: 87,
+            },
+          ],
           creadoEn: "2026-10-14T12:00:00.000Z",
           actualizadoEn: "2026-10-14T12:00:00.000Z",
         },
@@ -104,5 +115,17 @@ describe("ReclamosPanel evidence details", () => {
     expect(screen.getByText("Respuesta del ciudadano")).toBeInTheDocument();
     expect(screen.getByText("Sigue sin resolverse")).toBeInTheDocument();
     expect(screen.getByText("Respuesta: disconforme")).toBeInTheDocument();
+  });
+
+  it("labels duplicate matches as suggestions and lets an operator review the candidate", async () => {
+    render(<ReclamosPanel />);
+    expect(
+      await screen.findByText("Posibles duplicados: revisar, no se fusionaron"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("REC-OLD123 · 12 m · similitud 87%")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Revisar candidato" }));
+
+    expect(getReclamoById).toHaveBeenCalledWith("claim-older");
   });
 });

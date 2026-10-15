@@ -30,6 +30,16 @@ export interface ReclamoEvidence {
   url: string;
 }
 
+export interface PosibleDuplicado {
+  reclamoId: string;
+  codigoSeguimiento: string;
+  problema: string;
+  direccion: string;
+  estado: ReclamoEstado;
+  distanciaMetros: number;
+  similitud: number;
+}
+
 export interface Reclamo {
   id: string;
   codigoSeguimiento: string;
@@ -51,6 +61,7 @@ export interface Reclamo {
   resolvedAt?: string | null;
   evidencias?: ReclamoEvidence[];
   evidenciasCount?: number;
+  posiblesDuplicados?: PosibleDuplicado[];
 }
 
 export interface ReclamoListResponse {

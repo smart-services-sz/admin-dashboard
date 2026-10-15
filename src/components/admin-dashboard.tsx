@@ -9,6 +9,7 @@ import { RoutingPlansPanel } from "./routing-plans-panel";
 import { RoutingRoutesPanel } from "./routing-routes-panel";
 import { RoutingGeneratedPanel } from "./routing-generated-panel";
 import { AgentRoutesPanel } from "./agent-routes-panel";
+import { MunicipalConfigPanel } from "./municipal-config-panel";
 import { LogoutButton } from "@/components/logout-button";
 import styles from "./admin-dashboard.module.css";
 
@@ -19,6 +20,7 @@ type Section =
   | "ruteo-rutas"
   | "ruteo-generadas"
   | "metricas"
+  | "municipal-config"
   | AccessSection;
 type Theme = "light" | "dark";
 
@@ -29,6 +31,7 @@ const sectionTitles: Record<Section, string> = {
   "ruteo-rutas": "Ruteo y asignacion · Rutas",
   "ruteo-generadas": "Ruteo y asignacion · Rutas generadas",
   metricas: "Metricas operativas",
+  "municipal-config": "Configuracion municipal",
   users: "Administracion de usuarios",
   roles: "Administracion de roles",
   permissions: "Administracion de permisos",
@@ -218,6 +221,10 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
       return <RoutingGeneratedPanel />;
     }
 
+    if (activeSection === "municipal-config") {
+      return <MunicipalConfigPanel />;
+    }
+
     if (activeSection === "reclamos" && !canViewReclamos) {
       return (
         <section className={styles.placeholderCard}>
@@ -380,6 +387,17 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
               >
                 <PermissionsIcon />
                 <span className={styles.navLabel}>Permisos</span>
+              </button>
+              <button
+                type="button"
+                data-active={activeSection === "municipal-config"}
+                onClick={() => {
+                  setActiveSection("municipal-config");
+                  setIsSidebarOpen(false);
+                }}
+              >
+                <RolesIcon />
+                <span className={styles.navLabel}>Municipios</span>
               </button>
             </>
           )}

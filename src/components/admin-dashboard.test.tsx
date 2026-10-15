@@ -15,6 +15,7 @@ vi.mock("./routing-plans-panel", () => ({ RoutingPlansPanel: () => <p>Planes adm
 vi.mock("./routing-routes-panel", () => ({ RoutingRoutesPanel: () => <p>Generacion de rutas</p> }));
 vi.mock("./routing-generated-panel", () => ({ RoutingGeneratedPanel: () => <p>Rutas administrativas</p> }));
 vi.mock("./access-management-panel", () => ({ AccessManagementPanel: () => <p>Accesos</p> }));
+vi.mock("./municipal-config-panel", () => ({ MunicipalConfigPanel: () => <p>Panel de municipios</p> }));
 vi.mock("@/components/logout-button", () => ({ LogoutButton: () => <button>Salir</button> }));
 
 describe("AdminDashboard role navigation", () => {
@@ -27,7 +28,7 @@ describe("AdminDashboard role navigation", () => {
     render(<AdminDashboard user={{ userId: "agent-1", email: "agent@test.local", roles: auth.roles, permissions: ["VIEW_RECLAMOS", "MANAGE_RECLAMOS"] }} />);
     expect(screen.getByText("Trabajos del agente")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Mis rutas" })).toBeInTheDocument();
-    for (const name of ["Reclamos", "Planes", "Rutas", "Rutas generadas", "Metricas", "Usuarios", "Exportar reporte"]) {
+    for (const name of ["Reclamos", "Planes", "Rutas", "Rutas generadas", "Metricas", "Usuarios", "Municipios", "Exportar reporte"]) {
       expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
     }
   });
@@ -39,6 +40,8 @@ describe("AdminDashboard role navigation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Planes" }));
     expect(screen.getByText("Planes administrativos")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Metricas" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Municipios" }));
+    expect(screen.getByText("Panel de municipios")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Mis rutas" })).not.toBeInTheDocument();
   });
 

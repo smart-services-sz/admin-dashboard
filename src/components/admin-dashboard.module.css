@@ -1185,6 +1185,34 @@
   color: var(--text-muted);
 }
 
+.duplicateNotice {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--brand) 36%, var(--line-soft));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--brand) 8%, var(--bg-surface));
+  color: var(--text-primary);
+  font-size: 0.82rem;
+}
+
+.duplicateNotice > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.duplicateNotice button {
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  padding: 6px 9px;
+  background: var(--card-fallback-bg);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
 .operationalActionPanel {
   display: grid;
   gap: 8px;
