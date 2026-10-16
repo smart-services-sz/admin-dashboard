@@ -1265,6 +1265,141 @@
   cursor: not-allowed;
 }
 
+.auditFilters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+  gap: 10px;
+  padding: 12px;
+  margin-bottom: 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-subtle);
+}
+
+.auditFilters label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.auditFilters input,
+.auditFilters select {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  padding: 8px 9px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  font: inherit;
+}
+
+.auditFilterActions {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+}
+
+.auditFilterActions button,
+.panelHeader > button {
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.auditFilterActions button[type="submit"] {
+  color: #fff;
+  background: var(--brand-strong);
+  border-color: var(--brand-strong);
+}
+
+.auditFilterActions button:disabled,
+.panelHeader > button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.auditFeedback {
+  padding: 12px;
+  color: var(--text-muted);
+}
+
+.auditLevel {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 7px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.auditLevel[data-level="ERROR"],
+.auditLevel[data-level="SECURITY"] {
+  color: var(--alert);
+  border-color: color-mix(in srgb, var(--alert) 40%, var(--line-soft));
+}
+
+.auditSubValue {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.auditCorrelation {
+  display: block;
+  max-width: 150px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.auditDetails summary {
+  color: var(--brand-strong);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.auditDetails dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 8px;
+  margin: 8px 0;
+  font-size: 0.78rem;
+}
+
+.auditDetails dt {
+  color: var(--text-muted);
+}
+
+.auditDetails dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.auditDetails pre {
+  max-width: min(60vw, 560px);
+  max-height: 260px;
+  overflow: auto;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-base);
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.75rem;
+}
+
 @media (min-width: 700px) {
   .metricsGrid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1281,6 +1416,16 @@
   .formGrid,
   .selectionGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 699px) {
+  .auditFilterActions {
+    grid-column: 1 / -1;
+  }
+
+  .auditFilterActions button {
+    flex: 1;
   }
 }
 

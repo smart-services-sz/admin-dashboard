@@ -10,6 +10,7 @@ import { RoutingRoutesPanel } from "./routing-routes-panel";
 import { RoutingGeneratedPanel } from "./routing-generated-panel";
 import { AgentRoutesPanel } from "./agent-routes-panel";
 import { MunicipalConfigPanel } from "./municipal-config-panel";
+import { AuditLogsPanel } from "./audit-logs-panel";
 import { LogoutButton } from "@/components/logout-button";
 import styles from "./admin-dashboard.module.css";
 
@@ -21,6 +22,7 @@ type Section =
   | "ruteo-generadas"
   | "metricas"
   | "municipal-config"
+  | "audit-logs"
   | AccessSection;
 type Theme = "light" | "dark";
 
@@ -32,6 +34,7 @@ const sectionTitles: Record<Section, string> = {
   "ruteo-generadas": "Ruteo y asignacion · Rutas generadas",
   metricas: "Metricas operativas",
   "municipal-config": "Configuracion municipal",
+  "audit-logs": "Registro de auditoria",
   users: "Administracion de usuarios",
   roles: "Administracion de roles",
   permissions: "Administracion de permisos",
@@ -225,6 +228,15 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
       return <MunicipalConfigPanel />;
     }
 
+    if (activeSection === "audit-logs") {
+      return canManageAccess ? <AuditLogsPanel /> : (
+        <section className={styles.placeholderCard}>
+          <h2>Acceso denegado</h2>
+          <p>No tienes permisos para consultar la auditoria.</p>
+        </section>
+      );
+    }
+
     if (activeSection === "reclamos" && !canViewReclamos) {
       return (
         <section className={styles.placeholderCard}>
@@ -398,6 +410,17 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
               >
                 <RolesIcon />
                 <span className={styles.navLabel}>Municipios</span>
+              </button>
+              <button
+                type="button"
+                data-active={activeSection === "audit-logs"}
+                onClick={() => {
+                  setActiveSection("audit-logs");
+                  setIsSidebarOpen(false);
+                }}
+              >
+                <RolesIcon />
+                <span className={styles.navLabel}>Auditoria</span>
               </button>
             </>
           )}
