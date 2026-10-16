@@ -11,6 +11,7 @@ import { RoutingGeneratedPanel } from "./routing-generated-panel";
 import { AgentRoutesPanel } from "./agent-routes-panel";
 import { MunicipalConfigPanel } from "./municipal-config-panel";
 import { AuditLogsPanel } from "./audit-logs-panel";
+import { ReclamosMetricsPanel } from "./reclamos-metrics-panel";
 import { LogoutButton } from "@/components/logout-button";
 import styles from "./admin-dashboard.module.css";
 
@@ -201,14 +202,16 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
     }
 
     if (activeSection === "metricas") {
+      if (!canManageAccess) {
+        return (
+          <section className={styles.placeholderCard}>
+            <h2>Acceso denegado</h2>
+            <p>No tienes permisos para consultar métricas.</p>
+          </section>
+        );
+      }
       return (
-        <section className={styles.placeholderCard}>
-          <h2>Metricas</h2>
-          <p>
-            Aqui puedes agregar graficos y reportes del flujo de reclamos cuando
-            conectemos con los microservicios.
-          </p>
-        </section>
+        <ReclamosMetricsPanel user={user} />
       );
     }
 
@@ -354,7 +357,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
               <span className={styles.navLabel}>Rutas generadas</span>
             </button>
           )}
-          {!isAgent && <button
+          {canManageAccess && <button
             type="button"
             data-active={activeSection === "metricas"}
             onClick={() => {

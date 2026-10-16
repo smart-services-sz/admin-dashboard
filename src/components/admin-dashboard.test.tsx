@@ -17,6 +17,7 @@ vi.mock("./routing-generated-panel", () => ({ RoutingGeneratedPanel: () => <p>Ru
 vi.mock("./access-management-panel", () => ({ AccessManagementPanel: () => <p>Accesos</p> }));
 vi.mock("./municipal-config-panel", () => ({ MunicipalConfigPanel: () => <p>Panel de municipios</p> }));
 vi.mock("./audit-logs-panel", () => ({ AuditLogsPanel: () => <p>Panel de auditoria</p> }));
+vi.mock("./reclamos-metrics-panel", () => ({ ReclamosMetricsPanel: () => <p>Metricas municipales</p> }));
 vi.mock("@/components/logout-button", () => ({ LogoutButton: () => <button>Salir</button> }));
 
 describe("AdminDashboard role navigation", () => {
@@ -43,6 +44,8 @@ describe("AdminDashboard role navigation", () => {
     expect(screen.getByRole("button", { name: "Metricas" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Municipios" }));
     expect(screen.getByText("Panel de municipios")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Metricas" }));
+    expect(screen.getByText("Metricas municipales")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Auditoria" }));
     expect(screen.getByText("Panel de auditoria")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Mis rutas" })).not.toBeInTheDocument();
